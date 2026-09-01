@@ -1,0 +1,8 @@
+{
+  "name": "livekit-server-cpp",
+  "version-string": "0.1.0",
+  "description": "C++20 SDK for LiveKit server APIs and access tokens",
+  "dependencies": [
+    "protobuf"
+  ]
+}
