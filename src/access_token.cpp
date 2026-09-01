@@ -1,19 +1,11 @@
 #include "livekit/server/access_token.h"
 
+#include "detail/crypto.h"
 #include "livekit/server/error.h"
 
-#ifdef _WIN32
-#include <windows.h>
-
-#include <bcrypt.h>
-#endif
-
-#include <array>
-#include <cstdint>
 #include <iomanip>
 #include <sstream>
 #include <utility>
-#include <vector>
 
 namespace livekit::server {
 namespace {
@@ -53,82 +45,6 @@ std::string EscapeJson(const std::string& value) {
 		}
 	}
 	return output.str();
-}
-
-std::string Base64Url(const std::uint8_t* data, std::size_t size) {
-	static constexpr char alphabet[] =
-	    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-	std::string output;
-	output.reserve((size * 4 + 2) / 3);
-	for (std::size_t offset = 0; offset < size; offset += 3) {
-		const std::uint32_t first = data[offset];
-		const std::uint32_t second = offset + 1 < size ? data[offset + 1] : 0;
-		const std::uint32_t third = offset + 2 < size ? data[offset + 2] : 0;
-		const std::uint32_t value = (first << 16) | (second << 8) | third;
-		output.push_back(alphabet[(value >> 18) & 0x3f]);
-		output.push_back(alphabet[(value >> 12) & 0x3f]);
-		if (offset + 1 < size) {
-			output.push_back(alphabet[(value >> 6) & 0x3f]);
-		}
-		if (offset + 2 < size) {
-			output.push_back(alphabet[value & 0x3f]);
-		}
-	}
-	return output;
-}
-
-std::string Base64Url(const std::string& value) {
-	return Base64Url(reinterpret_cast<const std::uint8_t*>(value.data()), value.size());
-}
-
-std::vector<std::uint8_t> HmacSha256(const std::string& secret, const std::string& value) {
-#ifdef _WIN32
-	BCRYPT_ALG_HANDLE algorithm = nullptr;
-	BCRYPT_HASH_HANDLE hash = nullptr;
-	DWORD object_size = 0;
-	DWORD hash_size = 0;
-	DWORD copied = 0;
-	if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr,
-	                                                BCRYPT_ALG_HANDLE_HMAC_FLAG)) ||
-	    !BCRYPT_SUCCESS(BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH,
-	                                      reinterpret_cast<PUCHAR>(&object_size),
-	                                      sizeof(object_size), &copied, 0)) ||
-	    !BCRYPT_SUCCESS(BCryptGetProperty(algorithm, BCRYPT_HASH_LENGTH,
-	                                      reinterpret_cast<PUCHAR>(&hash_size), sizeof(hash_size),
-	                                      &copied, 0))) {
-		if (algorithm != nullptr) {
-			BCryptCloseAlgorithmProvider(algorithm, 0);
-		}
-		throw Error(ErrorCode::authentication, "failed to initialize HS256");
-	}
-
-	std::vector<std::uint8_t> object(object_size);
-	std::vector<std::uint8_t> digest(hash_size);
-	const auto status =
-	    BCryptCreateHash(algorithm, &hash, object.data(), static_cast<ULONG>(object.size()),
-	                     reinterpret_cast<PUCHAR>(const_cast<char*>(secret.data())),
-	                     static_cast<ULONG>(secret.size()), 0);
-	if (!BCRYPT_SUCCESS(status) ||
-	    !BCRYPT_SUCCESS(BCryptHashData(hash,
-	                                   reinterpret_cast<PUCHAR>(const_cast<char*>(value.data())),
-	                                   static_cast<ULONG>(value.size()), 0)) ||
-	    !BCRYPT_SUCCESS(
-	        BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0))) {
-		if (hash != nullptr) {
-			BCryptDestroyHash(hash);
-		}
-		BCryptCloseAlgorithmProvider(algorithm, 0);
-		throw Error(ErrorCode::authentication, "failed to sign LiveKit access token");
-	}
-	BCryptDestroyHash(hash);
-	BCryptCloseAlgorithmProvider(algorithm, 0);
-	return digest;
-#else
-	(void)secret;
-	(void)value;
-	throw Error(ErrorCode::unsupported,
-	            "HS256 is not available on this platform; provide a pre-signed token");
-#endif
 }
 
 void AddBool(std::ostringstream& json, bool& first, const char* name, bool value,
@@ -288,9 +204,10 @@ std::string AccessToken::ToJwt(std::chrono::system_clock::time_point now) const 
 	claims << '}';
 
 	const std::string header = R"({"alg":"HS256","typ":"JWT"})";
-	const std::string unsigned_token = Base64Url(header) + "." + Base64Url(claims.str());
-	const auto signature = HmacSha256(api_secret_, unsigned_token);
-	return unsigned_token + "." + Base64Url(signature.data(), signature.size());
+	const std::string unsigned_token =
+	    detail::Base64UrlEncode(header) + "." + detail::Base64UrlEncode(claims.str());
+	const auto signature = detail::HmacSha256(api_secret_, unsigned_token);
+	return unsigned_token + "." + detail::Base64UrlEncode(signature);
 }
 
 } // namespace livekit::server

@@ -48,6 +48,7 @@ set(LIVEKIT_SERVER_PROTO_FILES
   "${LIVEKIT_PROTOCOL_PROTO_DIR}/livekit_room.proto"
   "${LIVEKIT_PROTOCOL_PROTO_DIR}/livekit_rtc.proto"
   "${LIVEKIT_PROTOCOL_PROTO_DIR}/livekit_sip.proto"
+  "${LIVEKIT_PROTOCOL_PROTO_DIR}/livekit_webhook.proto"
   "${LIVEKIT_PROTOCOL_PROTO_DIR}/logger/options.proto"
 )
 
@@ -79,7 +80,9 @@ add_library(
   src/livekit_api.cpp
   src/room_service_client.cpp
   src/sip_client.cpp
+  src/webhook_receiver.cpp
   src/detail/client_context.cpp
+  src/detail/crypto.cpp
   $<TARGET_OBJECTS:livekit_server_proto>
 )
 add_library(LiveKitServer::livekitserver ALIAS livekitserver)
@@ -123,6 +126,12 @@ if(LIVEKIT_SERVER_BUILD_TESTS)
   target_link_libraries(livekit_server_unit_tests PRIVATE LiveKitServer::livekitserver)
   add_test(NAME livekit_server_unit_tests COMMAND livekit_server_unit_tests)
   set_tests_properties(livekit_server_unit_tests PROPERTIES LABELS unit)
+
+  add_executable(livekit_server_webhook_tests test/unit/webhook_receiver_test.cpp)
+  target_include_directories(livekit_server_webhook_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_link_libraries(livekit_server_webhook_tests PRIVATE LiveKitServer::livekitserver)
+  add_test(NAME livekit_server_webhook_tests COMMAND livekit_server_webhook_tests)
+  set_tests_properties(livekit_server_webhook_tests PROPERTIES LABELS unit)
 endif()
 
 if(LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS)
@@ -133,11 +142,26 @@ if(LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS)
     livekit_server_integration_tests
     PROPERTIES LABELS integration SKIP_RETURN_CODE 77
   )
+
+  if(WIN32)
+    add_executable(livekit_server_webhook_integration_tests
+      test/integration/webhook_callback_test.cpp)
+    target_link_libraries(livekit_server_webhook_integration_tests
+      PRIVATE LiveKitServer::livekitserver ws2_32)
+    add_test(NAME livekit_server_webhook_integration_tests
+      COMMAND livekit_server_webhook_integration_tests)
+    set_tests_properties(
+      livekit_server_webhook_integration_tests
+      PROPERTIES LABELS integration SKIP_RETURN_CODE 77
+    )
+  endif()
 endif()
 
 if(LIVEKIT_SERVER_BUILD_EXAMPLES)
   add_executable(livekit_server_room_example examples/room_service.cpp)
   target_link_libraries(livekit_server_room_example PRIVATE LiveKitServer::livekitserver)
+  add_executable(livekit_server_webhook_example examples/webhook_handler.cpp)
+  target_link_libraries(livekit_server_webhook_example PRIVATE LiveKitServer::livekitserver)
 endif()
 
 install(

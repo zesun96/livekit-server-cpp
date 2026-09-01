@@ -11,6 +11,7 @@ capture, or playback dependencies.
 - SIP trunks, dispatch rules, and participants
 - Agent dispatch
 - WhatsApp and Twilio connectors
+- Verified LiveKit webhook event callbacks
 - LiveKit access tokens signed with HS256
 - Twirp-over-HTTP protobuf transport, with connection reuse through WinHTTP on Windows
 
@@ -55,6 +56,42 @@ const auto token = livekit::server::AccessToken("api-key", "api-secret")
                        .SetVideoGrant(std::move(grant))
                        .ToJwt();
 ```
+
+## Webhook event callbacks
+
+LiveKit server events arrive through signed HTTP webhooks. `WebhookReceiver` verifies the HS256
+JWT, token lifetime, API key, and SHA-256 checksum of the exact request body before parsing or
+dispatching the event:
+
+```cpp
+#include <livekit/server/webhook_receiver.h>
+
+livekit::server::WebhookCallbacks callbacks;
+callbacks.on_participant_joined = [](const livekit::WebhookEvent& event) {
+  std::cout << event.participant().identity() << " joined\n";
+};
+callbacks.on_room_finished = [](const livekit::WebhookEvent& event) {
+  std::cout << event.room().name() << " finished\n";
+};
+
+livekit::server::WebhookReceiver receiver(
+    "api-key", "api-secret", std::move(callbacks));
+
+// Inside the application's HTTP POST handler. Pass the raw, unmodified body;
+// reserializing JSON before verification changes its checksum.
+receiver.ReceiveAndDispatch(raw_request_body, authorization_header);
+```
+
+Callbacks are available for room, participant, track, Egress, and Ingress events. `on_event` runs
+for every verified event, including event types added by a newer server. Event-specific callbacks
+run after `on_event`. Dispatch is synchronous on the calling HTTP-handler thread; applications can
+hand work to their own executor when callbacks must not block the response. `SetCallbacks()` may be
+called concurrently with event processing.
+
+Multiple signing keys can be supplied as a map. `WebhookKeyProvider` supports dynamic secret
+lookup without storing the whole key set in the receiver. Authentication and malformed-payload
+failures throw `livekit::server::Error`; return a non-success HTTP status and never process the
+unverified body.
 
 ## Build
 
@@ -104,4 +141,6 @@ ctest --test-dir out/build/integration -C Release -L integration --output-on-fai
 ```
 
 Integration tests read credentials from the `LIVEKIT_*` environment variables and skip when they
-are unavailable.
+are unavailable. The webhook integration test listens only on `127.0.0.1:17890`; configure the
+local LiveKit Server webhook URL to that address before running it. It creates and deletes a unique
+room and requires a `room_started` event to pass signature verification and reach the callback.
