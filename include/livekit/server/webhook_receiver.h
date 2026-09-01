@@ -1,11 +1,11 @@
 #pragma once
 
-#include "livekit_webhook.pb.h"
-
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -26,7 +26,51 @@ inline constexpr std::string_view ingress_started = "ingress_started";
 inline constexpr std::string_view ingress_ended = "ingress_ended";
 } // namespace webhook_event
 
-using WebhookCallback = std::function<void(const livekit::WebhookEvent&)>;
+struct WebhookRoom {
+	std::string sid;
+	std::string name;
+	std::string metadata;
+};
+
+struct WebhookParticipant {
+	std::string sid;
+	std::string identity;
+	std::string name;
+	std::string metadata;
+};
+
+struct WebhookTrack {
+	std::string sid;
+	std::string name;
+};
+
+struct WebhookEgress {
+	std::string egress_id;
+	std::string room_id;
+	std::string room_name;
+};
+
+struct WebhookIngress {
+	std::string ingress_id;
+	std::string name;
+	std::string room_name;
+};
+
+// Public, protobuf-independent representation of a verified webhook. raw_body
+// contains the complete event JSON, including fields added by newer servers.
+struct WebhookEvent {
+	std::string event;
+	std::string id;
+	std::int64_t created_at{};
+	std::optional<WebhookRoom> room;
+	std::optional<WebhookParticipant> participant;
+	std::optional<WebhookTrack> track;
+	std::optional<WebhookEgress> egress;
+	std::optional<WebhookIngress> ingress;
+	std::string raw_body;
+};
+
+using WebhookCallback = std::function<void(const WebhookEvent&)>;
 using WebhookKeyProvider = std::function<std::string(const std::string& api_key)>;
 
 struct WebhookCallbacks {
@@ -59,15 +103,13 @@ public:
 
 	void SetCallbacks(WebhookCallbacks callbacks);
 
-	[[nodiscard]] livekit::WebhookEvent Receive(std::string_view body,
-	                                            std::string_view authorization) const;
-	void Dispatch(const livekit::WebhookEvent& event) const;
+	[[nodiscard]] WebhookEvent Receive(std::string_view body, std::string_view authorization) const;
+	void Dispatch(const WebhookEvent& event) const;
 	void ReceiveAndDispatch(std::string_view body, std::string_view authorization) const;
 
 private:
-	[[nodiscard]] livekit::WebhookEvent ReceiveAt(std::string_view body,
-	                                              std::string_view authorization,
-	                                              std::chrono::system_clock::time_point now) const;
+	[[nodiscard]] WebhookEvent ReceiveAt(std::string_view body, std::string_view authorization,
+	                                     std::chrono::system_clock::time_point now) const;
 
 	WebhookKeyProvider key_provider_;
 	mutable std::mutex callbacks_mutex_;

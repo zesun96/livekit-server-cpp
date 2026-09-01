@@ -1,6 +1,6 @@
 #pragma once
 
-#include "livekit_room.pb.h"
+#include "livekit/server/protocol_fwd.h"
 
 #include <memory>
 
@@ -14,8 +14,9 @@ public:
 	explicit RoomServiceClient(std::shared_ptr<detail::ClientContext> context);
 
 	[[nodiscard]] livekit::Room CreateRoom(const livekit::CreateRoomRequest& request) const;
+	[[nodiscard]] livekit::ListRoomsResponse ListRooms() const;
 	[[nodiscard]] livekit::ListRoomsResponse
-	ListRooms(const livekit::ListRoomsRequest& request = {}) const;
+	ListRooms(const livekit::ListRoomsRequest& request) const;
 	[[nodiscard]] livekit::DeleteRoomResponse
 	DeleteRoom(const livekit::DeleteRoomRequest& request) const;
 	[[nodiscard]] livekit::ListParticipantsResponse

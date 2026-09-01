@@ -1,8 +1,6 @@
 #pragma once
 
-#include "livekit_sip.pb.h"
-
-#include <google/protobuf/empty.pb.h>
+#include "livekit/server/protocol_fwd.h"
 
 #include <memory>
 

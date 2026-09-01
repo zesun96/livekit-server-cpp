@@ -122,6 +122,12 @@ if(LIVEKIT_SERVER_BUILD_TESTS OR LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS)
 endif()
 
 if(LIVEKIT_SERVER_BUILD_TESTS)
+  add_library(livekit_server_public_headers_test OBJECT
+    test/unit/public_headers_test.cpp)
+  target_compile_features(livekit_server_public_headers_test PRIVATE cxx_std_20)
+  target_include_directories(livekit_server_public_headers_test
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
   add_executable(livekit_server_unit_tests test/unit/server_sdk_test.cpp)
   target_link_libraries(livekit_server_unit_tests PRIVATE LiveKitServer::livekitserver)
   add_test(NAME livekit_server_unit_tests COMMAND livekit_server_unit_tests)

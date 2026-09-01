@@ -1,6 +1,7 @@
 #include "livekit/server/egress_client.h"
 
 #include "detail/client_context.h"
+#include "livekit_egress.pb.h"
 
 #include <utility>
 

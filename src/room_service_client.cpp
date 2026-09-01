@@ -1,6 +1,7 @@
 #include "livekit/server/room_service_client.h"
 
 #include "detail/client_context.h"
+#include "livekit_room.pb.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -56,6 +57,10 @@ std::string Nonce() {
 
 RoomServiceClient::RoomServiceClient(std::shared_ptr<detail::ClientContext> context)
     : context_(std::move(context)) {}
+
+livekit::ListRoomsResponse RoomServiceClient::ListRooms() const {
+	return ListRooms(livekit::ListRoomsRequest{});
+}
 
 livekit::Room RoomServiceClient::CreateRoom(const livekit::CreateRoomRequest& request) const {
 	return Call<livekit::Room>(context_, "CreateRoom", request, RoomGrant(true));

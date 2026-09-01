@@ -1,5 +1,6 @@
 #include "livekit/server/livekit_api.h"
 #include "livekit/server/webhook_receiver.h"
+#include "livekit_room.pb.h"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -146,9 +147,9 @@ int main() {
 		bool received_room_started = false;
 		std::exception_ptr thread_error;
 		livekit::server::WebhookCallbacks callbacks;
-		callbacks.on_room_started = [&](const livekit::WebhookEvent& event) {
+		callbacks.on_room_started = [&](const livekit::server::WebhookEvent& event) {
 			std::lock_guard lock(event_mutex);
-			if (event.room().name() == room_name) {
+			if (event.room && event.room->name == room_name) {
 				received_room_started = true;
 				event_ready.notify_one();
 			}
