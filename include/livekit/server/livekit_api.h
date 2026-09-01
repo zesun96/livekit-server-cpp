@@ -7,6 +7,7 @@
 #include "livekit/server/ingress_client.h"
 #include "livekit/server/room_service_client.h"
 #include "livekit/server/sip_client.h"
+#include "livekit/server/webhook_receiver.h"
 
 #include <memory>
 

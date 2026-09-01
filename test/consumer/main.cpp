@@ -14,5 +14,7 @@ int main() {
 	                       .SetValidFor(std::chrono::minutes(5))
 	                       .SetVideoGrant(std::move(grant))
 	                       .ToJwt();
+	livekit::server::WebhookReceiver receiver("test-key", "test-secret");
+	(void)receiver;
 	return token.empty() ? 1 : 0;
 }
