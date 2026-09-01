@@ -1,6 +1,7 @@
 #include "livekit/server/ingress_client.h"
 
 #include "detail/client_context.h"
+#include "livekit_ingress.pb.h"
 
 #include <utility>
 

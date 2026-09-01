@@ -1,9 +1,8 @@
 #pragma once
 
-#include "livekit_agent_dispatch.pb.h"
+#include "livekit/server/protocol_fwd.h"
 
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace livekit::server {
@@ -21,8 +20,8 @@ public:
 	DeleteDispatch(const livekit::DeleteAgentDispatchRequest& request) const;
 	[[nodiscard]] livekit::ListAgentDispatchResponse
 	ListDispatch(const livekit::ListAgentDispatchRequest& request) const;
-	[[nodiscard]] std::optional<livekit::AgentDispatch> GetDispatch(std::string dispatch_id,
-	                                                                std::string room) const;
+	[[nodiscard]] std::shared_ptr<livekit::AgentDispatch> GetDispatch(std::string dispatch_id,
+	                                                                  std::string room) const;
 
 private:
 	std::shared_ptr<detail::ClientContext> context_;

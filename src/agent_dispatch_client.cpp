@@ -1,6 +1,7 @@
 #include "livekit/server/agent_dispatch_client.h"
 
 #include "detail/client_context.h"
+#include "livekit_agent_dispatch.pb.h"
 
 #include <utility>
 
@@ -39,16 +40,16 @@ AgentDispatchClient::ListDispatch(const livekit::ListAgentDispatchRequest& reque
 	                                                request.room());
 }
 
-std::optional<livekit::AgentDispatch> AgentDispatchClient::GetDispatch(std::string dispatch_id,
-                                                                       std::string room) const {
+std::shared_ptr<livekit::AgentDispatch> AgentDispatchClient::GetDispatch(std::string dispatch_id,
+                                                                         std::string room) const {
 	livekit::ListAgentDispatchRequest request;
 	request.set_dispatch_id(std::move(dispatch_id));
 	request.set_room(std::move(room));
 	auto response = ListDispatch(request);
 	if (response.agent_dispatches().empty()) {
-		return std::nullopt;
+		return {};
 	}
-	return response.agent_dispatches(0);
+	return std::make_shared<livekit::AgentDispatch>(response.agent_dispatches(0));
 }
 
 } // namespace livekit::server

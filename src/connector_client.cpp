@@ -1,6 +1,7 @@
 #include "livekit/server/connector_client.h"
 
 #include "detail/client_context.h"
+#include "livekit_connector.pb.h"
 
 #include <utility>
 

@@ -1,4 +1,5 @@
 #include "livekit/server/livekit_api.h"
+#include "livekit_room.pb.h"
 
 #include <iostream>
 

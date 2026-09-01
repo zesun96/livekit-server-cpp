@@ -2,6 +2,7 @@
 
 #include "detail/crypto.h"
 #include "livekit/server/error.h"
+#include "livekit_webhook.pb.h"
 
 #include <google/protobuf/util/json_util.h>
 
@@ -179,14 +180,12 @@ void WebhookReceiver::SetCallbacks(WebhookCallbacks callbacks) {
 	callbacks_ = std::move(callbacks);
 }
 
-livekit::WebhookEvent WebhookReceiver::Receive(std::string_view body,
-                                               std::string_view authorization) const {
+WebhookEvent WebhookReceiver::Receive(std::string_view body, std::string_view authorization) const {
 	return ReceiveAt(body, authorization, std::chrono::system_clock::now());
 }
 
-livekit::WebhookEvent WebhookReceiver::ReceiveAt(std::string_view body,
-                                                 std::string_view authorization,
-                                                 std::chrono::system_clock::time_point now) const {
+WebhookEvent WebhookReceiver::ReceiveAt(std::string_view body, std::string_view authorization,
+                                        std::chrono::system_clock::time_point now) const {
 	if (authorization.starts_with("Bearer ")) {
 		authorization.remove_prefix(7);
 	}
@@ -238,18 +237,46 @@ livekit::WebhookEvent WebhookReceiver::ReceiveAt(std::string_view body,
 		throw Error(ErrorCode::authentication, "webhook body checksum is invalid");
 	}
 
-	livekit::WebhookEvent event;
+	livekit::WebhookEvent parsed;
 	google::protobuf::util::JsonParseOptions options;
 	options.ignore_unknown_fields = true;
 	const auto status =
-	    google::protobuf::util::JsonStringToMessage(std::string(body), &event, options);
+	    google::protobuf::util::JsonStringToMessage(std::string(body), &parsed, options);
 	if (!status.ok()) {
 		throw Error(ErrorCode::protocol, "webhook JSON is invalid: " + status.ToString());
+	}
+
+	WebhookEvent event;
+	event.event = parsed.event();
+	event.id = parsed.id();
+	event.created_at = parsed.created_at();
+	event.raw_body = body;
+	if (parsed.has_room()) {
+		event.room =
+		    WebhookRoom{parsed.room().sid(), parsed.room().name(), parsed.room().metadata()};
+	}
+	if (parsed.has_participant()) {
+		event.participant =
+		    WebhookParticipant{parsed.participant().sid(), parsed.participant().identity(),
+		                       parsed.participant().name(), parsed.participant().metadata()};
+	}
+	if (parsed.has_track()) {
+		event.track = WebhookTrack{parsed.track().sid(), parsed.track().name()};
+	}
+	if (parsed.has_egress_info()) {
+		event.egress =
+		    WebhookEgress{parsed.egress_info().egress_id(), parsed.egress_info().room_id(),
+		                  parsed.egress_info().room_name()};
+	}
+	if (parsed.has_ingress_info()) {
+		event.ingress =
+		    WebhookIngress{parsed.ingress_info().ingress_id(), parsed.ingress_info().name(),
+		                   parsed.ingress_info().room_name()};
 	}
 	return event;
 }
 
-void WebhookReceiver::Dispatch(const livekit::WebhookEvent& event) const {
+void WebhookReceiver::Dispatch(const WebhookEvent& event) const {
 	WebhookCallbacks callbacks;
 	{
 		std::lock_guard lock(callbacks_mutex_);
@@ -258,7 +285,7 @@ void WebhookReceiver::Dispatch(const livekit::WebhookEvent& event) const {
 	if (callbacks.on_event) {
 		callbacks.on_event(event);
 	}
-	if (auto callback = SpecificCallback(callbacks, event.event())) {
+	if (auto callback = SpecificCallback(callbacks, event.event)) {
 		callback(event);
 	}
 }

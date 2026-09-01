@@ -51,18 +51,25 @@ void ExpectAuthenticationFailure(const livekit::server::WebhookReceiver& receive
 
 void TestVerifiedDispatch() {
 	const std::string body =
-	    R"({"event":"participant_joined","participant":{"identity":"alice"},"id":"EV_1","createdAt":"1700000000","futureField":true})";
+	    R"({"event":"participant_joined","room":{"sid":"RM_1","name":"support","metadata":"room-data"},"participant":{"sid":"PA_1","identity":"alice","name":"Alice","metadata":"participant-data"},"track":{"sid":"TR_1","name":"microphone"},"egressInfo":{"egressId":"EG_1","roomId":"RM_1","roomName":"support"},"ingressInfo":{"ingressId":"IN_1","name":"input","roomName":"support"},"id":"EV_1","createdAt":"1700000000","futureField":true})";
 	const auto now = std::chrono::system_clock::now();
 	int all_events = 0;
 	int participant_events = 0;
 	livekit::server::WebhookCallbacks callbacks;
-	callbacks.on_event = [&](const livekit::WebhookEvent& event) {
+	callbacks.on_event = [&](const livekit::server::WebhookEvent& event) {
 		++all_events;
-		Require(event.id() == "EV_1", "generic callback event mismatch");
+		Require(event.id == "EV_1", "generic callback event mismatch");
+		Require(event.raw_body == body, "verified raw webhook body was not preserved");
+		Require(event.room && event.room->sid == "RM_1" && event.room->name == "support",
+		        "room payload mismatch");
+		Require(event.track && event.track->sid == "TR_1", "track payload mismatch");
+		Require(event.egress && event.egress->egress_id == "EG_1", "egress payload mismatch");
+		Require(event.ingress && event.ingress->ingress_id == "IN_1", "ingress payload mismatch");
 	};
-	callbacks.on_participant_joined = [&](const livekit::WebhookEvent& event) {
+	callbacks.on_participant_joined = [&](const livekit::server::WebhookEvent& event) {
 		++participant_events;
-		Require(event.participant().identity() == "alice", "participant callback mismatch");
+		Require(event.participant.has_value(), "participant payload is missing");
+		Require(event.participant->identity == "alice", "participant callback mismatch");
 	};
 	livekit::server::WebhookReceiver receiver("key", "secret", std::move(callbacks));
 	receiver.ReceiveAndDispatch(body, "Bearer " + WebhookToken(body, now));
@@ -100,13 +107,13 @@ void TestCallbackReplacementAndUnknownEvent() {
 	int first = 0;
 	int second = 0;
 	livekit::server::WebhookCallbacks callbacks;
-	callbacks.on_event = [&](const livekit::WebhookEvent&) { ++first; };
+	callbacks.on_event = [&](const livekit::server::WebhookEvent&) { ++first; };
 	livekit::server::WebhookReceiver receiver(
 	    [](const std::string& key) { return key == "key" ? "secret" : ""; }, std::move(callbacks));
 	receiver.Dispatch(receiver.Receive(body, WebhookToken(body, std::chrono::system_clock::now())));
 
 	livekit::server::WebhookCallbacks replacement;
-	replacement.on_event = [&](const livekit::WebhookEvent&) { ++second; };
+	replacement.on_event = [&](const livekit::server::WebhookEvent&) { ++second; };
 	receiver.SetCallbacks(std::move(replacement));
 	receiver.Dispatch(receiver.Receive(body, WebhookToken(body, std::chrono::system_clock::now())));
 	Require(first == 1 && second == 1, "webhook callback replacement failed");

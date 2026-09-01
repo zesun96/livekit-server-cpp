@@ -1,6 +1,11 @@
 #include "livekit/server/access_token.h"
 #include "livekit/server/error.h"
 #include "livekit/server/livekit_api.h"
+#include "livekit_agent_dispatch.pb.h"
+#include "livekit_connector.pb.h"
+#include "livekit_ingress.pb.h"
+#include "livekit_room.pb.h"
+#include "livekit_sip.pb.h"
 
 #include <chrono>
 #include <iostream>

@@ -1,6 +1,9 @@
 #include "livekit/server/sip_client.h"
 
 #include "detail/client_context.h"
+#include "livekit_sip.pb.h"
+
+#include <google/protobuf/empty.pb.h>
 
 #include <utility>
 

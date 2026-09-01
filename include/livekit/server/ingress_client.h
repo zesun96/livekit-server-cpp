@@ -1,6 +1,6 @@
 #pragma once
 
-#include "livekit_ingress.pb.h"
+#include "livekit/server/protocol_fwd.h"
 
 #include <memory>
 

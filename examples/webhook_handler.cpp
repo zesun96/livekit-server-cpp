@@ -7,11 +7,15 @@ namespace {
 
 livekit::server::WebhookCallbacks Callbacks() {
 	livekit::server::WebhookCallbacks callbacks;
-	callbacks.on_participant_joined = [](const livekit::WebhookEvent& event) {
-		std::cout << "participant joined: " << event.participant().identity() << '\n';
+	callbacks.on_participant_joined = [](const livekit::server::WebhookEvent& event) {
+		if (event.participant) {
+			std::cout << "participant joined: " << event.participant->identity << '\n';
+		}
 	};
-	callbacks.on_egress_ended = [](const livekit::WebhookEvent& event) {
-		std::cout << "egress ended: " << event.egress_info().egress_id() << '\n';
+	callbacks.on_egress_ended = [](const livekit::server::WebhookEvent& event) {
+		if (event.egress) {
+			std::cout << "egress ended: " << event.egress->egress_id << '\n';
+		}
 	};
 	return callbacks;
 }

@@ -19,6 +19,7 @@ The public entry point mirrors the official Go server SDK:
 
 ```cpp
 #include <livekit/server/livekit_api.h>
+#include <livekit_room.pb.h>
 
 livekit::server::ApiOptions options;
 options.url = "https://project.livekit.cloud";
@@ -31,6 +32,11 @@ livekit::CreateRoomRequest request;
 request.set_name("support");
 const auto room = api.Room().CreateRoom(request);
 ```
+
+SDK public headers do not include generated protobuf headers. Source files that construct typed
+service requests should explicitly include the corresponding protocol header, such as
+`livekit_room.pb.h`; source files that only use access tokens or webhook callbacks do not inherit
+those generated includes.
 
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` are used when the corresponding options
 are omitted. A pre-signed token can be supplied with `ApiOptions::access_token` or `LIVEKIT_TOKEN`.
@@ -67,11 +73,15 @@ dispatching the event:
 #include <livekit/server/webhook_receiver.h>
 
 livekit::server::WebhookCallbacks callbacks;
-callbacks.on_participant_joined = [](const livekit::WebhookEvent& event) {
-  std::cout << event.participant().identity() << " joined\n";
+callbacks.on_participant_joined = [](const livekit::server::WebhookEvent& event) {
+  if (event.participant) {
+    std::cout << event.participant->identity << " joined\n";
+  }
 };
-callbacks.on_room_finished = [](const livekit::WebhookEvent& event) {
-  std::cout << event.room().name() << " finished\n";
+callbacks.on_room_finished = [](const livekit::server::WebhookEvent& event) {
+  if (event.room) {
+    std::cout << event.room->name << " finished\n";
+  }
 };
 
 livekit::server::WebhookReceiver receiver(
@@ -86,7 +96,9 @@ Callbacks are available for room, participant, track, Egress, and Ingress events
 for every verified event, including event types added by a newer server. Event-specific callbacks
 run after `on_event`. Dispatch is synchronous on the calling HTTP-handler thread; applications can
 hand work to their own executor when callbacks must not block the response. `SetCallbacks()` may be
-called concurrently with event processing.
+called concurrently with event processing. The public webhook types use only the C++ standard
+library and do not expose generated protobuf headers. `WebhookEvent::raw_body` preserves the full
+verified JSON payload for protocol fields not present in the convenience structures.
 
 Multiple signing keys can be supplied as a map. `WebhookKeyProvider` supports dynamic secret
 lookup without storing the whole key set in the receiver. Authentication and malformed-payload
