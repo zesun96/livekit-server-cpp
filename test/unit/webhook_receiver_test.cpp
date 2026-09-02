@@ -3,20 +3,14 @@
 
 #include "detail/crypto.h"
 
+#include <gtest/gtest.h>
+
 #include <chrono>
-#include <iostream>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 
 namespace {
-
-void Require(bool condition, const char* message) {
-	if (!condition) {
-		throw std::runtime_error(message);
-	}
-}
 
 std::string WebhookToken(std::string_view body, std::chrono::system_clock::time_point now,
                          std::string_view api_key = "key", std::string_view secret = "secret",
@@ -42,14 +36,13 @@ void ExpectAuthenticationFailure(const livekit::server::WebhookReceiver& receive
                                  std::string_view body, std::string_view token) {
 	try {
 		(void)receiver.Receive(body, token);
-		throw std::runtime_error("expected webhook authentication failure");
+		FAIL() << "expected webhook authentication failure";
 	} catch (const livekit::server::Error& error) {
-		Require(error.code() == livekit::server::ErrorCode::authentication,
-		        "wrong webhook error category");
+		EXPECT_EQ(error.code(), livekit::server::ErrorCode::authentication);
 	}
 }
 
-void TestVerifiedDispatch() {
+TEST(WebhookReceiverTest, VerifiesAndDispatchesTypedPayload) {
 	const std::string body =
 	    R"({"event":"participant_joined","room":{"sid":"RM_1","name":"support","metadata":"room-data"},"participant":{"sid":"PA_1","identity":"alice","name":"Alice","metadata":"participant-data"},"track":{"sid":"TR_1","name":"microphone"},"egressInfo":{"egressId":"EG_1","roomId":"RM_1","roomName":"support"},"ingressInfo":{"ingressId":"IN_1","name":"input","roomName":"support"},"id":"EV_1","createdAt":"1700000000","futureField":true})";
 	const auto now = std::chrono::system_clock::now();
@@ -58,26 +51,30 @@ void TestVerifiedDispatch() {
 	livekit::server::WebhookCallbacks callbacks;
 	callbacks.on_event = [&](const livekit::server::WebhookEvent& event) {
 		++all_events;
-		Require(event.id == "EV_1", "generic callback event mismatch");
-		Require(event.raw_body == body, "verified raw webhook body was not preserved");
-		Require(event.room && event.room->sid == "RM_1" && event.room->name == "support",
-		        "room payload mismatch");
-		Require(event.track && event.track->sid == "TR_1", "track payload mismatch");
-		Require(event.egress && event.egress->egress_id == "EG_1", "egress payload mismatch");
-		Require(event.ingress && event.ingress->ingress_id == "IN_1", "ingress payload mismatch");
+		EXPECT_EQ(event.id, "EV_1");
+		EXPECT_EQ(event.raw_body, body);
+		ASSERT_TRUE(event.room);
+		EXPECT_EQ(event.room->sid, "RM_1");
+		EXPECT_EQ(event.room->name, "support");
+		ASSERT_TRUE(event.track);
+		EXPECT_EQ(event.track->sid, "TR_1");
+		ASSERT_TRUE(event.egress);
+		EXPECT_EQ(event.egress->egress_id, "EG_1");
+		ASSERT_TRUE(event.ingress);
+		EXPECT_EQ(event.ingress->ingress_id, "IN_1");
 	};
 	callbacks.on_participant_joined = [&](const livekit::server::WebhookEvent& event) {
 		++participant_events;
-		Require(event.participant.has_value(), "participant payload is missing");
-		Require(event.participant->identity == "alice", "participant callback mismatch");
+		ASSERT_TRUE(event.participant);
+		EXPECT_EQ(event.participant->identity, "alice");
 	};
 	livekit::server::WebhookReceiver receiver("key", "secret", std::move(callbacks));
 	receiver.ReceiveAndDispatch(body, "Bearer " + WebhookToken(body, now));
-	Require(all_events == 1, "generic webhook callback was not invoked");
-	Require(participant_events == 1, "specific webhook callback was not invoked");
+	EXPECT_EQ(all_events, 1);
+	EXPECT_EQ(participant_events, 1);
 }
 
-void TestTamperingAndUnknownKeys() {
+TEST(WebhookReceiverTest, RejectsTamperingAndUnknownKeys) {
 	const std::string body = R"({"event":"room_started","id":"EV_2"})";
 	const auto token = WebhookToken(body, std::chrono::system_clock::now());
 	livekit::server::WebhookReceiver receiver("key", "secret");
@@ -91,7 +88,7 @@ void TestTamperingAndUnknownKeys() {
 	ExpectAuthenticationFailure(receiver, body, bad_signature);
 }
 
-void TestTokenTimeValidation() {
+TEST(WebhookReceiverTest, RejectsInvalidTokenTimes) {
 	const std::string body = R"({"event":"room_finished","id":"EV_3"})";
 	const auto now = std::chrono::system_clock::now();
 	livekit::server::WebhookReceiver receiver("key", "secret");
@@ -102,7 +99,7 @@ void TestTokenTimeValidation() {
 	    WebhookToken(body, now, "key", "secret", std::chrono::minutes(5), std::chrono::minutes(2)));
 }
 
-void TestCallbackReplacementAndUnknownEvent() {
+TEST(WebhookReceiverTest, ReplacesCallbacksAndAcceptsUnknownEvents) {
 	const std::string body = R"({"event":"future_event","id":"EV_4"})";
 	int first = 0;
 	int second = 0;
@@ -116,21 +113,8 @@ void TestCallbackReplacementAndUnknownEvent() {
 	replacement.on_event = [&](const livekit::server::WebhookEvent&) { ++second; };
 	receiver.SetCallbacks(std::move(replacement));
 	receiver.Dispatch(receiver.Receive(body, WebhookToken(body, std::chrono::system_clock::now())));
-	Require(first == 1 && second == 1, "webhook callback replacement failed");
+	EXPECT_EQ(first, 1);
+	EXPECT_EQ(second, 1);
 }
 
 } // namespace
-
-int main() {
-	try {
-		TestVerifiedDispatch();
-		TestTamperingAndUnknownKeys();
-		TestTokenTimeValidation();
-		TestCallbackReplacementAndUnknownEvent();
-		std::cout << "all webhook tests passed\n";
-		return 0;
-	} catch (const std::exception& error) {
-		std::cerr << "test failure: " << error.what() << '\n';
-		return 1;
-	}
-}

@@ -7,20 +7,14 @@
 #include "livekit_room.pb.h"
 #include "livekit_sip.pb.h"
 
+#include <gtest/gtest.h>
+
 #include <chrono>
-#include <iostream>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
 namespace {
-
-void Require(bool condition, const char* message) {
-	if (!condition) {
-		throw std::runtime_error(message);
-	}
-}
 
 std::string Base64UrlDecode(std::string value) {
 	for (auto& ch : value) {
@@ -43,7 +37,9 @@ std::string Base64UrlDecode(std::string value) {
 			break;
 		}
 		const auto position = alphabet.find(ch);
-		Require(position != std::string::npos, "invalid base64url token");
+		if (position == std::string::npos) {
+			return {};
+		}
 		buffer = (buffer << 6) | static_cast<unsigned int>(position);
 		bits += 6;
 		if (bits >= 8) {
@@ -64,16 +60,16 @@ public:
 		}
 		livekit::CreateRoomRequest create_request;
 		if (request.url.ends_with("/CreateRoom")) {
-			Require(create_request.ParseFromString(request.body), "request protobuf did not parse");
+			EXPECT_TRUE(create_request.ParseFromString(request.body));
 			livekit::Room room;
 			room.set_name(create_request.name());
 			std::string body;
-			Require(room.SerializeToString(&body), "response protobuf did not serialize");
+			EXPECT_TRUE(room.SerializeToString(&body));
 			return {.status_code = 200, .body = std::move(body)};
 		}
 		livekit::ListRoomsResponse rooms;
 		std::string body;
-		Require(rooms.SerializeToString(&body), "response protobuf did not serialize");
+		EXPECT_TRUE(rooms.SerializeToString(&body));
 		return {.status_code = 200, .body = std::move(body)};
 	}
 
@@ -92,16 +88,22 @@ std::string Header(const livekit::server::HttpRequest& request, const std::strin
 
 std::string BearerPayload(const livekit::server::HttpRequest& request) {
 	const auto authorization = Header(request, "Authorization");
-	Require(authorization.starts_with("Bearer "), "bearer token missing");
+	EXPECT_TRUE(authorization.starts_with("Bearer "));
+	if (!authorization.starts_with("Bearer ")) {
+		return {};
+	}
 	const auto token = authorization.substr(7);
 	const auto first_dot = token.find('.');
 	const auto second_dot = token.find('.', first_dot + 1);
-	Require(first_dot != std::string::npos && second_dot != std::string::npos,
-	        "bearer token is not a JWT");
+	EXPECT_NE(first_dot, std::string::npos);
+	EXPECT_NE(second_dot, std::string::npos);
+	if (first_dot == std::string::npos || second_dot == std::string::npos) {
+		return {};
+	}
 	return Base64UrlDecode(token.substr(first_dot + 1, second_dot - first_dot - 1));
 }
 
-void TestAccessToken() {
+TEST(AccessTokenTest, BuildsSignedJwtWithExplicitGrantValues) {
 	livekit::server::VideoGrant grant;
 	grant.room_join = true;
 	grant.room = "room-a";
@@ -115,21 +117,19 @@ void TestAccessToken() {
 	                       .ToJwt(now);
 	const auto first_dot = token.find('.');
 	const auto second_dot = token.find('.', first_dot + 1);
-	Require(first_dot != std::string::npos && second_dot != std::string::npos,
-	        "JWT must have three segments");
-	Require(Base64UrlDecode(token.substr(0, first_dot)) == R"({"alg":"HS256","typ":"JWT"})",
-	        "JWT header mismatch");
+	ASSERT_NE(first_dot, std::string::npos);
+	ASSERT_NE(second_dot, std::string::npos);
+	EXPECT_EQ(Base64UrlDecode(token.substr(0, first_dot)), R"({"alg":"HS256","typ":"JWT"})");
 	const auto payload = Base64UrlDecode(token.substr(first_dot + 1, second_dot - first_dot - 1));
-	Require(payload.find(R"("iss":"key")") != std::string::npos, "JWT issuer missing");
-	Require(payload.find(R"("sub":"alice")") != std::string::npos, "JWT subject missing");
-	Require(payload.find(R"("exp":1700003600)") != std::string::npos, "JWT expiration mismatch");
-	Require(payload.find(R"("roomJoin":true)") != std::string::npos, "roomJoin grant missing");
-	Require(payload.find(R"("canPublish":false)") != std::string::npos,
-	        "explicit false grant missing");
-	Require(!token.substr(second_dot + 1).empty(), "JWT signature missing");
+	EXPECT_NE(payload.find(R"("iss":"key")"), std::string::npos);
+	EXPECT_NE(payload.find(R"("sub":"alice")"), std::string::npos);
+	EXPECT_NE(payload.find(R"("exp":1700003600)"), std::string::npos);
+	EXPECT_NE(payload.find(R"("roomJoin":true)"), std::string::npos);
+	EXPECT_NE(payload.find(R"("canPublish":false)"), std::string::npos);
+	EXPECT_FALSE(token.substr(second_dot + 1).empty());
 }
 
-void TestRoomRequest() {
+TEST(LiveKitApiTest, SendsRoomRequestToExpectedTwirpRoute) {
 	auto transport = std::make_shared<RecordingTransport>();
 	livekit::server::ApiOptions options;
 	options.url = "ws://localhost:7880/";
@@ -140,18 +140,15 @@ void TestRoomRequest() {
 	livekit::CreateRoomRequest request;
 	request.set_name("sdk-test");
 	const auto room = api.Room().CreateRoom(request);
-	Require(room.name() == "sdk-test", "CreateRoom response mismatch");
-	Require(transport->last_request.url ==
-	            "http://localhost:7880/twirp/livekit.RoomService/CreateRoom",
-	        "Twirp URL mismatch");
-	Require(Header(transport->last_request, "Content-Type") == "application/protobuf",
-	        "protobuf content type missing");
-	Require(Header(transport->last_request, "Authorization") == "Bearer fixed-token",
-	        "authorization header mismatch");
-	Require(!Header(transport->last_request, "X-Livekit-Request-Id").empty(), "request id missing");
+	EXPECT_EQ(room.name(), "sdk-test");
+	EXPECT_EQ(transport->last_request.url,
+	          "http://localhost:7880/twirp/livekit.RoomService/CreateRoom");
+	EXPECT_EQ(Header(transport->last_request, "Content-Type"), "application/protobuf");
+	EXPECT_EQ(Header(transport->last_request, "Authorization"), "Bearer fixed-token");
+	EXPECT_FALSE(Header(transport->last_request, "X-Livekit-Request-Id").empty());
 }
 
-void TestTwirpError() {
+TEST(LiveKitApiTest, ConvertsTwirpFailureToSdkError) {
 	auto transport = std::make_shared<RecordingTransport>();
 	transport->fail = true;
 	livekit::server::ApiOptions options;
@@ -161,16 +158,16 @@ void TestTwirpError() {
 	livekit::server::LiveKitApi api(std::move(options));
 	try {
 		(void)api.Room().ListRooms();
-		throw std::runtime_error("expected Twirp error");
+		FAIL() << "expected Twirp error";
 	} catch (const livekit::server::Error& error) {
-		Require(error.code() == livekit::server::ErrorCode::http, "wrong error category");
-		Require(error.http_status() == 403, "wrong HTTP status");
-		Require(error.twirp_code() == "permission_denied", "wrong Twirp code");
-		Require(std::string(error.what()) == "not allowed", "wrong Twirp message");
+		EXPECT_EQ(error.code(), livekit::server::ErrorCode::http);
+		EXPECT_EQ(error.http_status(), 403);
+		EXPECT_EQ(error.twirp_code(), "permission_denied");
+		EXPECT_STREQ(error.what(), "not allowed");
 	}
 }
 
-void TestServiceRoutesAndGrants() {
+TEST(LiveKitApiTest, UsesExpectedServiceRoutesAndGrants) {
 	auto transport = std::make_shared<RecordingTransport>();
 	livekit::server::ApiOptions options;
 	options.url = "https://livekit.example";
@@ -180,72 +177,46 @@ void TestServiceRoutesAndGrants() {
 	livekit::server::LiveKitApi api(std::move(options));
 
 	(void)api.Egress().ListEgress({});
-	Require(transport->last_request.url.ends_with("/twirp/livekit.Egress/ListEgress"),
-	        "Egress route mismatch");
-	Require(BearerPayload(transport->last_request).find(R"("roomRecord":true)") !=
-	            std::string::npos,
-	        "Egress grant mismatch");
+	EXPECT_TRUE(transport->last_request.url.ends_with("/twirp/livekit.Egress/ListEgress"));
+	EXPECT_NE(BearerPayload(transport->last_request).find(R"("roomRecord":true)"),
+	          std::string::npos);
 
 	(void)api.Ingress().ListIngress({});
-	Require(transport->last_request.url.ends_with("/twirp/livekit.Ingress/ListIngress"),
-	        "Ingress route mismatch");
-	Require(BearerPayload(transport->last_request).find(R"("ingressAdmin":true)") !=
-	            std::string::npos,
-	        "Ingress grant mismatch");
+	EXPECT_TRUE(transport->last_request.url.ends_with("/twirp/livekit.Ingress/ListIngress"));
+	EXPECT_NE(BearerPayload(transport->last_request).find(R"("ingressAdmin":true)"),
+	          std::string::npos);
 
 	(void)api.SIP().ListTrunks({});
-	Require(transport->last_request.url.ends_with("/twirp/livekit.SIP/ListSIPTrunk"),
-	        "SIP route mismatch");
-	Require(BearerPayload(transport->last_request).find(R"("sip":{"admin":true})") !=
-	            std::string::npos,
-	        "SIP grant mismatch");
+	EXPECT_TRUE(transport->last_request.url.ends_with("/twirp/livekit.SIP/ListSIPTrunk"));
+	EXPECT_NE(BearerPayload(transport->last_request).find(R"("sip":{"admin":true})"),
+	          std::string::npos);
 
 	livekit::ListAgentDispatchRequest dispatch;
 	dispatch.set_room("agent-room");
 	(void)api.AgentDispatch().ListDispatch(dispatch);
-	Require(
-	    transport->last_request.url.ends_with("/twirp/livekit.AgentDispatchService/ListDispatch"),
-	    "Agent dispatch route mismatch");
+	EXPECT_TRUE(
+	    transport->last_request.url.ends_with("/twirp/livekit.AgentDispatchService/ListDispatch"));
 	const auto dispatch_payload = BearerPayload(transport->last_request);
-	Require(dispatch_payload.find(R"("roomAdmin":true)") != std::string::npos &&
-	            dispatch_payload.find(R"("room":"agent-room")") != std::string::npos,
-	        "Agent dispatch grant mismatch");
+	EXPECT_NE(dispatch_payload.find(R"("roomAdmin":true)"), std::string::npos);
+	EXPECT_NE(dispatch_payload.find(R"("room":"agent-room")"), std::string::npos);
 
 	(void)api.Connector().DisconnectWhatsAppCall({});
-	Require(
-	    transport->last_request.url.ends_with("/twirp/livekit.Connector/DisconnectWhatsAppCall"),
-	    "Connector route mismatch");
-	Require(BearerPayload(transport->last_request).find(R"("roomCreate":true)") !=
-	            std::string::npos,
-	        "Connector grant mismatch");
+	EXPECT_TRUE(
+	    transport->last_request.url.ends_with("/twirp/livekit.Connector/DisconnectWhatsAppCall"));
+	EXPECT_NE(BearerPayload(transport->last_request).find(R"("roomCreate":true)"),
+	          std::string::npos);
 }
 
-void TestConfigurationValidation() {
+TEST(LiveKitApiTest, RejectsIncompleteCredentials) {
 	livekit::server::ApiOptions options;
 	options.url = "http://localhost:7880";
 	options.api_key = "key-without-secret";
 	try {
 		livekit::server::LiveKitApi api(std::move(options));
-		throw std::runtime_error("expected authentication error");
+		FAIL() << "expected authentication error";
 	} catch (const livekit::server::Error& error) {
-		Require(error.code() == livekit::server::ErrorCode::authentication,
-		        "wrong configuration error category");
+		EXPECT_EQ(error.code(), livekit::server::ErrorCode::authentication);
 	}
 }
 
 } // namespace
-
-int main() {
-	try {
-		TestAccessToken();
-		TestRoomRequest();
-		TestTwirpError();
-		TestServiceRoutesAndGrants();
-		TestConfigurationValidation();
-		std::cout << "all unit tests passed\n";
-		return 0;
-	} catch (const std::exception& error) {
-		std::cerr << "test failure: " << error.what() << '\n';
-		return 1;
-	}
-}

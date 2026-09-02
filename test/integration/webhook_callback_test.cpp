@@ -5,13 +5,14 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
 #include <exception>
-#include <iostream>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -112,18 +113,13 @@ void SendResponse(SOCKET socket, bool success) {
 
 } // namespace
 
-int main() {
+void RunWebhookCallbackIntegration() {
 	const auto api_key = Environment("LIVEKIT_API_KEY");
 	const auto api_secret = Environment("LIVEKIT_API_SECRET");
-	if (Environment("LIVEKIT_URL").empty() || api_key.empty() || api_secret.empty()) {
-		std::cout << "skipped: set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET\n";
-		return 77;
-	}
 
 	WSADATA winsock{};
 	if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0) {
-		std::cerr << "WSAStartup failed\n";
-		return 1;
+		throw std::runtime_error("WSAStartup failed");
 	}
 	SOCKET listener = INVALID_SOCKET;
 	std::thread server_thread;
@@ -201,9 +197,7 @@ int main() {
 		livekit::DeleteRoomRequest remove;
 		remove.set_room(room_name);
 		(void)api.Room().DeleteRoom(remove);
-		std::cout << "webhook callback integration test passed\n";
-	} catch (const std::exception& error) {
-		std::cerr << error.what() << '\n';
+	} catch (...) {
 		if (listener != INVALID_SOCKET) {
 			closesocket(listener);
 			listener = INVALID_SOCKET;
@@ -212,7 +206,7 @@ int main() {
 			server_thread.join();
 		}
 		WSACleanup();
-		return 1;
+		throw;
 	}
 
 	if (listener != INVALID_SOCKET) {
@@ -222,5 +216,13 @@ int main() {
 		server_thread.join();
 	}
 	WSACleanup();
-	return 0;
+}
+
+TEST(WebhookIntegrationTest, ReceivesVerifiedRoomStartedCallback) {
+	if (Environment("LIVEKIT_URL").empty() || Environment("LIVEKIT_API_KEY").empty() ||
+	    Environment("LIVEKIT_API_SECRET").empty()) {
+		GTEST_SKIP() << "set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET";
+	}
+
+	EXPECT_NO_THROW(RunWebhookCallbackIntegration());
 }

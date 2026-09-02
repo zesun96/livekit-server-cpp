@@ -119,6 +119,7 @@ endif()
 
 if(LIVEKIT_SERVER_BUILD_TESTS OR LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS)
   enable_testing()
+  include(cmake/Testing.cmake)
 endif()
 
 if(LIVEKIT_SERVER_BUILD_TESTS)
@@ -129,36 +130,54 @@ if(LIVEKIT_SERVER_BUILD_TESTS)
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
   add_executable(livekit_server_unit_tests test/unit/server_sdk_test.cpp)
-  target_link_libraries(livekit_server_unit_tests PRIVATE LiveKitServer::livekitserver)
-  add_test(NAME livekit_server_unit_tests COMMAND livekit_server_unit_tests)
-  set_tests_properties(livekit_server_unit_tests PROPERTIES LABELS unit)
+  target_link_libraries(
+    livekit_server_unit_tests
+    PRIVATE LiveKitServer::livekitserver GTest::gtest_main
+  )
+  gtest_discover_tests(
+    livekit_server_unit_tests
+    TEST_PREFIX "unit."
+    PROPERTIES LABELS "unit" TIMEOUT 10
+    DISCOVERY_MODE PRE_TEST
+  )
 
   add_executable(livekit_server_webhook_tests test/unit/webhook_receiver_test.cpp)
   target_include_directories(livekit_server_webhook_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-  target_link_libraries(livekit_server_webhook_tests PRIVATE LiveKitServer::livekitserver)
-  add_test(NAME livekit_server_webhook_tests COMMAND livekit_server_webhook_tests)
-  set_tests_properties(livekit_server_webhook_tests PROPERTIES LABELS unit)
+  target_link_libraries(
+    livekit_server_webhook_tests
+    PRIVATE LiveKitServer::livekitserver GTest::gtest_main
+  )
+  gtest_discover_tests(
+    livekit_server_webhook_tests
+    TEST_PREFIX "unit."
+    PROPERTIES LABELS "unit" TIMEOUT 10
+    DISCOVERY_MODE PRE_TEST
+  )
 endif()
 
 if(LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS)
   add_executable(livekit_server_integration_tests test/integration/room_service_test.cpp)
-  target_link_libraries(livekit_server_integration_tests PRIVATE LiveKitServer::livekitserver)
-  add_test(NAME livekit_server_integration_tests COMMAND livekit_server_integration_tests)
-  set_tests_properties(
+  target_link_libraries(
     livekit_server_integration_tests
-    PROPERTIES LABELS integration SKIP_RETURN_CODE 77
+    PRIVATE LiveKitServer::livekitserver GTest::gtest_main
+  )
+  gtest_discover_tests(
+    livekit_server_integration_tests
+    TEST_PREFIX "integration."
+    PROPERTIES LABELS "integration" TIMEOUT 30
+    DISCOVERY_MODE PRE_TEST
   )
 
   if(WIN32)
     add_executable(livekit_server_webhook_integration_tests
       test/integration/webhook_callback_test.cpp)
     target_link_libraries(livekit_server_webhook_integration_tests
-      PRIVATE LiveKitServer::livekitserver ws2_32)
-    add_test(NAME livekit_server_webhook_integration_tests
-      COMMAND livekit_server_webhook_integration_tests)
-    set_tests_properties(
+      PRIVATE LiveKitServer::livekitserver GTest::gtest_main ws2_32)
+    gtest_discover_tests(
       livekit_server_webhook_integration_tests
-      PROPERTIES LABELS integration SKIP_RETURN_CODE 77
+      TEST_PREFIX "integration."
+      PROPERTIES LABELS "integration" TIMEOUT 30
+      DISCOVERY_MODE PRE_TEST
     )
   endif()
 endif()
