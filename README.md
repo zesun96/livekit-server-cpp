@@ -120,6 +120,10 @@ cmake --build out/build/vs2022-x64-release --config Release --parallel
 ctest --test-dir out/build/vs2022-x64-release -C Release -L unit --output-on-failure
 ```
 
+When tests are enabled, CMake uses the same GoogleTest 1.15.2 setup as `livekit-client-cpp` and
+registers individual cases through `gtest_discover_tests`. Set `USE_SYSTEM_GTEST=ON` to use an
+installed GoogleTest package instead of the checksum-pinned source archive.
+
 Consumers link the namespaced target:
 
 ```cmake
