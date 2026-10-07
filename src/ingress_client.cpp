@@ -1,6 +1,7 @@
 #include "livekit/server/ingress_client.h"
 
 #include "detail/client_context.h"
+#include "detail/proto/json_codec.h"
 #include "livekit_ingress.pb.h"
 
 #include <utility>
@@ -21,6 +22,24 @@ Response Call(const std::shared_ptr<detail::ClientContext>& context, const char*
 
 IngressClient::IngressClient(std::shared_ptr<detail::ClientContext> context)
     : context_(std::move(context)) {}
+
+#define LIVEKIT_INGRESS_MODEL_METHOD(response, method, request, proto_response,                    \
+                                     proto_request_type)                                           \
+	model::response IngressClient::method(const model::request& request) const {                   \
+		auto protobuf_request = detail::proto::FromModel<livekit::proto_request_type>(request);    \
+		return detail::proto::ToModel<model::response>(method(protobuf_request));                  \
+	}
+
+LIVEKIT_INGRESS_MODEL_METHOD(IngressInfo, CreateIngress, CreateIngressRequest, IngressInfo,
+                             CreateIngressRequest)
+LIVEKIT_INGRESS_MODEL_METHOD(IngressInfo, UpdateIngress, UpdateIngressRequest, IngressInfo,
+                             UpdateIngressRequest)
+LIVEKIT_INGRESS_MODEL_METHOD(ListIngressResponse, ListIngress, ListIngressRequest,
+                             ListIngressResponse, ListIngressRequest)
+LIVEKIT_INGRESS_MODEL_METHOD(IngressInfo, DeleteIngress, DeleteIngressRequest, IngressInfo,
+                             DeleteIngressRequest)
+
+#undef LIVEKIT_INGRESS_MODEL_METHOD
 
 livekit::IngressInfo
 IngressClient::CreateIngress(const livekit::CreateIngressRequest& request) const {

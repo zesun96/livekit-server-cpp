@@ -1,6 +1,7 @@
 #include "livekit/server/connector_client.h"
 
 #include "detail/client_context.h"
+#include "detail/proto/json_codec.h"
 #include "livekit_connector.pb.h"
 
 #include <utility>
@@ -24,6 +25,30 @@ Response Call(const std::shared_ptr<detail::ClientContext>& context, const char*
 
 ConnectorClient::ConnectorClient(std::shared_ptr<detail::ClientContext> context)
     : context_(std::move(context)) {}
+
+#define LIVEKIT_CONNECTOR_MODEL_METHOD(response, method, request, proto_response,                  \
+                                       proto_request_type)                                         \
+	model::response ConnectorClient::method(const model::request& request) const {                 \
+		auto protobuf_request = detail::proto::FromModel<livekit::proto_request_type>(request);    \
+		return detail::proto::ToModel<model::response>(method(protobuf_request));                  \
+	}
+
+LIVEKIT_CONNECTOR_MODEL_METHOD(DialWhatsAppCallResponse, DialWhatsAppCall, DialWhatsAppCallRequest,
+                               DialWhatsAppCallResponse, DialWhatsAppCallRequest)
+LIVEKIT_CONNECTOR_MODEL_METHOD(DisconnectWhatsAppCallResponse, DisconnectWhatsAppCall,
+                               DisconnectWhatsAppCallRequest, DisconnectWhatsAppCallResponse,
+                               DisconnectWhatsAppCallRequest)
+LIVEKIT_CONNECTOR_MODEL_METHOD(ConnectWhatsAppCallResponse, ConnectWhatsAppCall,
+                               ConnectWhatsAppCallRequest, ConnectWhatsAppCallResponse,
+                               ConnectWhatsAppCallRequest)
+LIVEKIT_CONNECTOR_MODEL_METHOD(AcceptWhatsAppCallResponse, AcceptWhatsAppCall,
+                               AcceptWhatsAppCallRequest, AcceptWhatsAppCallResponse,
+                               AcceptWhatsAppCallRequest)
+LIVEKIT_CONNECTOR_MODEL_METHOD(ConnectTwilioCallResponse, ConnectTwilioCall,
+                               ConnectTwilioCallRequest, ConnectTwilioCallResponse,
+                               ConnectTwilioCallRequest)
+
+#undef LIVEKIT_CONNECTOR_MODEL_METHOD
 
 livekit::DialWhatsAppCallResponse
 ConnectorClient::DialWhatsAppCall(const livekit::DialWhatsAppCallRequest& request) const {

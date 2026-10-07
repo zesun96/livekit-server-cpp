@@ -1,6 +1,6 @@
 # LiveKit Server C++ SDK Implementation Plan
 
-Last updated: 2026-09-02
+Last updated: 2026-10-07
 
 ## Goals and prioritization
 
@@ -28,19 +28,23 @@ Implemented:
 - HS256 AccessToken generation.
 - Webhook JWT, lifetime, and body-digest verification with event callbacks.
 - WinHTTP transport on Windows, connection reuse, and custom `HttpTransport` injection.
+- Protobuf-independent SDK service models with an optional generated-protobuf adapter.
 - GTest unit tests, opt-in real-server integration tests, and installed-package consumer tests.
 
 Major gaps:
 
 - No default HTTP implementation on non-Windows platforms.
-- Public service signatures still use protobuf types even though public headers do not directly
-  include generated headers.
+- SDK-owned service models use canonical JSON and do not yet provide typed convenience accessors.
 - No per-request cancellation, timeout, extra headers, or asynchronous API.
 - AccessToken does not cover all current grants and room configuration claims.
 - The 30 Cloud Phone Number, Cloud Agent, and Agent Simulation methods are absent.
 - LiveKit Cloud region discovery and failover are absent.
 
 ## Phase S0: Stabilize the public API boundary
+
+Status: completed on 2026-10-07. The protobuf-independent service models, conversion layer,
+optional compatibility target, public-header compile test, and installed-consumer fixtures are in
+place. Later phases may add typed convenience accessors without changing the model boundary.
 
 Goal: establish a maintainable API and ABI for the self-hosted release before further service
 expansion causes repeated breaking changes.

@@ -1,6 +1,6 @@
 # LiveKit Server C++ SDK 实现计划
 
-更新时间：2026-09-02
+更新时间：2026-10-07
 
 ## 目标与排序原则
 
@@ -28,18 +28,23 @@
 - AccessToken HS256 签发。
 - Webhook JWT、有效期和正文摘要验证，以及事件回调。
 - Windows WinHTTP 传输、连接复用、自定义 `HttpTransport`。
+- protobuf 无关的 SDK 服务模型，以及可选的 protobuf 生成类型 adapter。
 - GTest 单元测试、可选真实服务器集成测试、安装包 consumer 测试。
 
 主要缺口：
 
 - 非 Windows 平台没有默认 HTTP 实现。
-- 服务公开签名仍使用 protobuf 类型，虽然公共头已不直接包含生成头。
+- SDK 自有服务模型目前使用规范 JSON，尚未提供类型化便捷访问器。
 - 没有每次请求的取消、超时、额外 Header 和异步接口。
 - AccessToken 尚未覆盖最新授权和房间配置声明。
 - 缺少 Cloud Phone Number、Cloud Agent、Agent Simulation 共 30 个接口。
 - 缺少 LiveKit Cloud 区域发现和 failover。
 
 ## 阶段 S0：稳定公共 API 边界
+
+状态：已于 2026-10-07 完成。protobuf 无关的服务模型、转换层、可选兼容目标、公共头文件编译
+测试和安装包 consumer fixture 均已落地；后续阶段可以在不改变模型边界的前提下增加类型化便捷
+访问器。
 
 目标：先确定自托管版本可以长期维护的 API 和 ABI，避免后续服务扩展反复破坏调用方。
 

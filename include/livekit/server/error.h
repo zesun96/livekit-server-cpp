@@ -1,17 +1,19 @@
 #pragma once
 
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 
 namespace livekit::server {
 
-enum class ErrorCode {
-	invalid_argument,
-	authentication,
-	transport,
-	http,
-	protocol,
-	unsupported,
+enum class ErrorCode : std::uint8_t {
+	invalid_argument = 0,
+	authentication = 1,
+	transport = 2,
+	http = 3,
+	protocol = 4,
+	unsupported = 5,
+	unknown = 255,
 };
 
 class Error : public std::runtime_error {

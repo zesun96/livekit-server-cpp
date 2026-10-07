@@ -14,6 +14,8 @@ include(CMakePackageConfigHelpers)
 option(LIVEKIT_SERVER_BUILD_TESTS "Build deterministic unit tests" ${PROJECT_IS_TOP_LEVEL})
 option(LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS "Build tests requiring a LiveKit server" OFF)
 option(LIVEKIT_SERVER_BUILD_EXAMPLES "Build examples" ON)
+option(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER
+  "Expose generated LiveKit protobuf headers through a compatibility target" ON)
 set(LIVEKIT_PROTOCOL_ROOT "" CACHE PATH "Path to a livekit/protocol source tree")
 
 find_package(Protobuf CONFIG REQUIRED)
@@ -91,12 +93,26 @@ target_include_directories(
   livekitserver
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${LIVEKIT_SERVER_GENERATED_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
+    "${LIVEKIT_SERVER_GENERATED_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
-target_link_libraries(livekitserver PUBLIC protobuf::libprotobuf)
+target_link_libraries(livekitserver PRIVATE protobuf::libprotobuf)
+target_compile_definitions(livekitserver PRIVATE LIVEKIT_SERVER_BUILDING_LIBRARY=1)
+
+if(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER)
+  add_library(livekitserver_protobuf_adapter INTERFACE)
+  add_library(LiveKitServer::protobuf_adapter ALIAS livekitserver_protobuf_adapter)
+  set_target_properties(livekitserver_protobuf_adapter PROPERTIES EXPORT_NAME protobuf_adapter)
+  target_include_directories(livekitserver_protobuf_adapter INTERFACE
+    $<BUILD_INTERFACE:${LIVEKIT_SERVER_GENERATED_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/livekit/server/protobuf>)
+  target_compile_definitions(livekitserver_protobuf_adapter INTERFACE
+    LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER_API=1)
+  target_link_libraries(livekitserver_protobuf_adapter INTERFACE
+    LiveKitServer::livekitserver protobuf::libprotobuf)
+endif()
 
 if(WIN32)
   target_compile_definitions(livekitserver PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -123,16 +139,39 @@ if(LIVEKIT_SERVER_BUILD_TESTS OR LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS)
 endif()
 
 if(LIVEKIT_SERVER_BUILD_TESTS)
+  file(GLOB_RECURSE LIVEKIT_SERVER_PUBLIC_HEADERS
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/include/livekit/server/*.h")
+  set(LIVEKIT_SERVER_PUBLIC_HEADER_TEST_SOURCES test/unit/public_headers_test.cpp)
+  foreach(public_header IN LISTS LIVEKIT_SERVER_PUBLIC_HEADERS)
+    string(MAKE_C_IDENTIFIER "${public_header}" public_header_id)
+    set(public_header_test_source
+      "${CMAKE_CURRENT_BINARY_DIR}/public_header_tests/${public_header_id}.cpp")
+    file(GENERATE OUTPUT "${public_header_test_source}"
+      CONTENT "#include <${public_header}>\n")
+    list(APPEND LIVEKIT_SERVER_PUBLIC_HEADER_TEST_SOURCES "${public_header_test_source}")
+  endforeach()
   add_library(livekit_server_public_headers_test OBJECT
-    test/unit/public_headers_test.cpp)
+    ${LIVEKIT_SERVER_PUBLIC_HEADER_TEST_SOURCES})
   target_compile_features(livekit_server_public_headers_test PRIVATE cxx_std_20)
   target_include_directories(livekit_server_public_headers_test
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
+  if(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER)
+    add_library(livekit_server_protobuf_adapter_headers_test OBJECT
+      test/unit/protobuf_adapter_headers_test.cpp)
+    target_compile_features(livekit_server_protobuf_adapter_headers_test PRIVATE cxx_std_20)
+    target_link_libraries(livekit_server_protobuf_adapter_headers_test
+      PRIVATE LiveKitServer::protobuf_adapter)
+  endif()
+
   add_executable(livekit_server_unit_tests test/unit/server_sdk_test.cpp)
+  target_include_directories(livekit_server_unit_tests PRIVATE "${LIVEKIT_SERVER_GENERATED_DIR}")
+  target_compile_definitions(livekit_server_unit_tests
+    PRIVATE LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER_API=1)
   target_link_libraries(
     livekit_server_unit_tests
-    PRIVATE LiveKitServer::livekitserver GTest::gtest_main
+    PRIVATE LiveKitServer::livekitserver GTest::gtest_main protobuf::libprotobuf
   )
   gtest_discover_tests(
     livekit_server_unit_tests
@@ -142,10 +181,11 @@ if(LIVEKIT_SERVER_BUILD_TESTS)
   )
 
   add_executable(livekit_server_webhook_tests test/unit/webhook_receiver_test.cpp)
-  target_include_directories(livekit_server_webhook_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_include_directories(livekit_server_webhook_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${LIVEKIT_SERVER_GENERATED_DIR}")
   target_link_libraries(
     livekit_server_webhook_tests
-    PRIVATE LiveKitServer::livekitserver GTest::gtest_main
+    PRIVATE LiveKitServer::livekitserver GTest::gtest_main protobuf::libprotobuf
   )
   gtest_discover_tests(
     livekit_server_webhook_tests
@@ -157,9 +197,13 @@ endif()
 
 if(LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS)
   add_executable(livekit_server_integration_tests test/integration/room_service_test.cpp)
+  target_include_directories(livekit_server_integration_tests
+    PRIVATE "${LIVEKIT_SERVER_GENERATED_DIR}")
+  target_compile_definitions(livekit_server_integration_tests
+    PRIVATE LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER_API=1)
   target_link_libraries(
     livekit_server_integration_tests
-    PRIVATE LiveKitServer::livekitserver GTest::gtest_main
+    PRIVATE LiveKitServer::livekitserver GTest::gtest_main protobuf::libprotobuf
   )
   gtest_discover_tests(
     livekit_server_integration_tests
@@ -171,8 +215,12 @@ if(LIVEKIT_SERVER_BUILD_INTEGRATION_TESTS)
   if(WIN32)
     add_executable(livekit_server_webhook_integration_tests
       test/integration/webhook_callback_test.cpp)
+    target_include_directories(livekit_server_webhook_integration_tests
+      PRIVATE "${LIVEKIT_SERVER_GENERATED_DIR}")
+    target_compile_definitions(livekit_server_webhook_integration_tests
+      PRIVATE LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER_API=1)
     target_link_libraries(livekit_server_webhook_integration_tests
-      PRIVATE LiveKitServer::livekitserver GTest::gtest_main ws2_32)
+      PRIVATE LiveKitServer::livekitserver GTest::gtest_main protobuf::libprotobuf ws2_32)
     gtest_discover_tests(
       livekit_server_webhook_integration_tests
       TEST_PREFIX "integration."
@@ -196,12 +244,17 @@ install(
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
+if(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER)
+  install(TARGETS livekitserver_protobuf_adapter EXPORT LiveKitServerTargets)
+endif()
 install(DIRECTORY include/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-install(
-  DIRECTORY "${LIVEKIT_SERVER_GENERATED_DIR}/"
-  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-  FILES_MATCHING PATTERN "*.pb.h"
-)
+if(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER)
+  install(
+    DIRECTORY "${LIVEKIT_SERVER_GENERATED_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/livekit/server/protobuf"
+    FILES_MATCHING PATTERN "*.pb.h"
+  )
+endif()
 install(
   EXPORT LiveKitServerTargets
   FILE LiveKitServerTargets.cmake

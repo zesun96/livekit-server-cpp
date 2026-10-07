@@ -15,11 +15,10 @@ capture, or playback dependencies.
 - LiveKit access tokens signed with HS256
 - Twirp-over-HTTP protobuf transport, with connection reuse through WinHTTP on Windows
 
-The public entry point mirrors the official Go server SDK:
+The primary service API uses SDK-owned models and does not require generated protobuf headers:
 
 ```cpp
 #include <livekit/server/livekit_api.h>
-#include <livekit_room.pb.h>
 
 livekit::server::ApiOptions options;
 options.url = "https://project.livekit.cloud";
@@ -28,15 +27,28 @@ options.api_secret = "api-secret";
 
 livekit::server::LiveKitApi api(std::move(options));
 
-livekit::CreateRoomRequest request;
-request.set_name("support");
+const auto request = livekit::server::model::CreateRoomRequest::FromJson(
+    R"({"name":"support"})");
 const auto room = api.Room().CreateRoom(request);
+std::cout << room.Json() << '\n';
 ```
 
-SDK public headers do not include generated protobuf headers. Source files that construct typed
-service requests should explicitly include the corresponding protocol header, such as
-`livekit_room.pb.h`; source files that only use access tokens or webhook callbacks do not inherit
-those generated includes.
+SDK models contain canonical protobuf JSON and have distinct C++ types for every request and
+response. They keep the API boundary stable while allowing new protocol fields to be represented
+without adding generated dependencies to public headers. See
+[`docs/public-api-boundary.md`](docs/public-api-boundary.md) for validation and compatibility
+behavior.
+
+Existing protobuf call sites remain supported through an optional compatibility target. It is
+enabled by default and installs the generated protocol headers:
+
+```cmake
+target_link_libraries(my_backend PRIVATE LiveKitServer::protobuf_adapter)
+```
+
+Set `LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER=OFF` when building or packaging the SDK to omit the
+generated headers and adapter target. Consumers using only SDK models continue to link
+`LiveKitServer::livekitserver`.
 
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` are used when the corresponding options
 are omitted. A pre-signed token can be supplied with `ApiOptions::access_token` or `LIVEKIT_TOKEN`.
