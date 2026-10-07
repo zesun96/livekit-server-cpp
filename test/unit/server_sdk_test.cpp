@@ -148,6 +148,40 @@ TEST(LiveKitApiTest, SendsRoomRequestToExpectedTwirpRoute) {
 	EXPECT_FALSE(Header(transport->last_request, "X-Livekit-Request-Id").empty());
 }
 
+TEST(LiveKitApiTest, ConvertsSdkOwnedModelsWithoutExposingProtobuf) {
+	auto transport = std::make_shared<RecordingTransport>();
+	livekit::server::ApiOptions options;
+	options.url = "ws://localhost:7880/";
+	options.access_token = "fixed-token";
+	options.transport = transport;
+	livekit::server::LiveKitApi api(std::move(options));
+
+	const auto request =
+	    livekit::server::model::CreateRoomRequest::FromJson(R"({"name":"sdk-model-test"})");
+	const auto room = api.Room().CreateRoom(request);
+	EXPECT_NE(room.Json().find(R"("name":"sdk-model-test")"), std::string_view::npos);
+	EXPECT_TRUE(transport->last_request.url.ends_with("/twirp/livekit.RoomService/CreateRoom"));
+	EXPECT_TRUE(api.Room().ListRoomsModel().Empty());
+}
+
+TEST(LiveKitApiTest, RejectsUnknownSdkModelFields) {
+	auto transport = std::make_shared<RecordingTransport>();
+	livekit::server::ApiOptions options;
+	options.url = "http://localhost:7880";
+	options.access_token = "fixed-token";
+	options.transport = transport;
+	livekit::server::LiveKitApi api(std::move(options));
+
+	const auto request =
+	    livekit::server::model::CreateRoomRequest::FromJson(R"({"futureField":true})");
+	try {
+		(void)api.Room().CreateRoom(request);
+		FAIL() << "expected protocol error";
+	} catch (const livekit::server::Error& error) {
+		EXPECT_EQ(error.code(), livekit::server::ErrorCode::protocol);
+	}
+}
+
 TEST(LiveKitApiTest, ConvertsTwirpFailureToSdkError) {
 	auto transport = std::make_shared<RecordingTransport>();
 	transport->fail = true;
@@ -176,31 +210,33 @@ TEST(LiveKitApiTest, UsesExpectedServiceRoutesAndGrants) {
 	options.transport = transport;
 	livekit::server::LiveKitApi api(std::move(options));
 
-	(void)api.Egress().ListEgress({});
+	(void)api.Egress().ListEgress(livekit::server::model::ListEgressRequest{});
 	EXPECT_TRUE(transport->last_request.url.ends_with("/twirp/livekit.Egress/ListEgress"));
 	EXPECT_NE(BearerPayload(transport->last_request).find(R"("roomRecord":true)"),
 	          std::string::npos);
 
-	(void)api.Ingress().ListIngress({});
+	(void)api.Ingress().ListIngress(livekit::server::model::ListIngressRequest{});
 	EXPECT_TRUE(transport->last_request.url.ends_with("/twirp/livekit.Ingress/ListIngress"));
 	EXPECT_NE(BearerPayload(transport->last_request).find(R"("ingressAdmin":true)"),
 	          std::string::npos);
 
-	(void)api.SIP().ListTrunks({});
+	(void)api.SIP().ListTrunks(livekit::server::model::ListSIPTrunkRequest{});
 	EXPECT_TRUE(transport->last_request.url.ends_with("/twirp/livekit.SIP/ListSIPTrunk"));
 	EXPECT_NE(BearerPayload(transport->last_request).find(R"("sip":{"admin":true})"),
 	          std::string::npos);
 
-	livekit::ListAgentDispatchRequest dispatch;
-	dispatch.set_room("agent-room");
+	const auto dispatch =
+	    livekit::server::model::ListAgentDispatchRequest::FromJson(R"({"room":"agent-room"})");
 	(void)api.AgentDispatch().ListDispatch(dispatch);
 	EXPECT_TRUE(
 	    transport->last_request.url.ends_with("/twirp/livekit.AgentDispatchService/ListDispatch"));
 	const auto dispatch_payload = BearerPayload(transport->last_request);
 	EXPECT_NE(dispatch_payload.find(R"("roomAdmin":true)"), std::string::npos);
 	EXPECT_NE(dispatch_payload.find(R"("room":"agent-room")"), std::string::npos);
+	EXPECT_FALSE(api.AgentDispatch().GetDispatchModel("missing", "agent-room").has_value());
 
-	(void)api.Connector().DisconnectWhatsAppCall({});
+	(void)api.Connector().DisconnectWhatsAppCall(
+	    livekit::server::model::DisconnectWhatsAppCallRequest{});
 	EXPECT_TRUE(
 	    transport->last_request.url.ends_with("/twirp/livekit.Connector/DisconnectWhatsAppCall"));
 	EXPECT_NE(BearerPayload(transport->last_request).find(R"("roomCreate":true)"),

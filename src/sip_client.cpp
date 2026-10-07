@@ -1,6 +1,7 @@
 #include "livekit/server/sip_client.h"
 
 #include "detail/client_context.h"
+#include "detail/proto/json_codec.h"
 #include "livekit_sip.pb.h"
 
 #include <google/protobuf/empty.pb.h>
@@ -32,6 +33,53 @@ detail::RequestGrant CallGrant(std::string room = {}) {
 
 SipClient::SipClient(std::shared_ptr<detail::ClientContext> context)
     : context_(std::move(context)) {}
+
+#define LIVEKIT_SIP_MODEL_METHOD(response, method, request, proto_response, proto_request_type)    \
+	model::response SipClient::method(const model::request& request) const {                       \
+		auto protobuf_request = detail::proto::FromModel<livekit::proto_request_type>(request);    \
+		return detail::proto::ToModel<model::response>(method(protobuf_request));                  \
+	}
+
+LIVEKIT_SIP_MODEL_METHOD(SIPInboundTrunkInfo, CreateInboundTrunk, CreateSIPInboundTrunkRequest,
+                         SIPInboundTrunkInfo, CreateSIPInboundTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(SIPOutboundTrunkInfo, CreateOutboundTrunk, CreateSIPOutboundTrunkRequest,
+                         SIPOutboundTrunkInfo, CreateSIPOutboundTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(SIPInboundTrunkInfo, UpdateInboundTrunk, UpdateSIPInboundTrunkRequest,
+                         SIPInboundTrunkInfo, UpdateSIPInboundTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(SIPOutboundTrunkInfo, UpdateOutboundTrunk, UpdateSIPOutboundTrunkRequest,
+                         SIPOutboundTrunkInfo, UpdateSIPOutboundTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(GetSIPInboundTrunkResponse, GetInboundTrunk, GetSIPInboundTrunkRequest,
+                         GetSIPInboundTrunkResponse, GetSIPInboundTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(GetSIPOutboundTrunkResponse, GetOutboundTrunk, GetSIPOutboundTrunkRequest,
+                         GetSIPOutboundTrunkResponse, GetSIPOutboundTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(ListSIPTrunkResponse, ListTrunks, ListSIPTrunkRequest,
+                         ListSIPTrunkResponse, ListSIPTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(ListSIPInboundTrunkResponse, ListInboundTrunks, ListSIPInboundTrunkRequest,
+                         ListSIPInboundTrunkResponse, ListSIPInboundTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(ListSIPOutboundTrunkResponse, ListOutboundTrunks,
+                         ListSIPOutboundTrunkRequest, ListSIPOutboundTrunkResponse,
+                         ListSIPOutboundTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(SIPTrunkInfo, DeleteTrunk, DeleteSIPTrunkRequest, SIPTrunkInfo,
+                         DeleteSIPTrunkRequest)
+LIVEKIT_SIP_MODEL_METHOD(SIPDispatchRuleInfo, CreateDispatchRule, CreateSIPDispatchRuleRequest,
+                         SIPDispatchRuleInfo, CreateSIPDispatchRuleRequest)
+LIVEKIT_SIP_MODEL_METHOD(SIPDispatchRuleInfo, UpdateDispatchRule, UpdateSIPDispatchRuleRequest,
+                         SIPDispatchRuleInfo, UpdateSIPDispatchRuleRequest)
+LIVEKIT_SIP_MODEL_METHOD(ListSIPDispatchRuleResponse, ListDispatchRules, ListSIPDispatchRuleRequest,
+                         ListSIPDispatchRuleResponse, ListSIPDispatchRuleRequest)
+LIVEKIT_SIP_MODEL_METHOD(SIPDispatchRuleInfo, DeleteDispatchRule, DeleteSIPDispatchRuleRequest,
+                         SIPDispatchRuleInfo, DeleteSIPDispatchRuleRequest)
+LIVEKIT_SIP_MODEL_METHOD(SIPParticipantInfo, CreateParticipant, CreateSIPParticipantRequest,
+                         SIPParticipantInfo, CreateSIPParticipantRequest)
+
+#undef LIVEKIT_SIP_MODEL_METHOD
+
+model::Empty
+SipClient::TransferParticipant(const model::TransferSIPParticipantRequest& request) const {
+	auto protobuf_request =
+	    detail::proto::FromModel<livekit::TransferSIPParticipantRequest>(request);
+	return detail::proto::ToModel<model::Empty>(TransferParticipant(protobuf_request));
+}
 
 livekit::SIPInboundTrunkInfo
 SipClient::CreateInboundTrunk(const livekit::CreateSIPInboundTrunkRequest& request) const {

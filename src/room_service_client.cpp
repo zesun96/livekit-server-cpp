@@ -1,6 +1,7 @@
 #include "livekit/server/room_service_client.h"
 
 #include "detail/client_context.h"
+#include "detail/proto/json_codec.h"
 #include "livekit_room.pb.h"
 
 #ifdef _WIN32
@@ -57,6 +58,47 @@ std::string Nonce() {
 
 RoomServiceClient::RoomServiceClient(std::shared_ptr<detail::ClientContext> context)
     : context_(std::move(context)) {}
+
+#define LIVEKIT_ROOM_MODEL_METHOD(response, method, request, proto_response, proto_request_type)   \
+	model::response RoomServiceClient::method(const model::request& request) const {               \
+		auto protobuf_request = detail::proto::FromModel<livekit::proto_request_type>(request);    \
+		return detail::proto::ToModel<model::response>(method(protobuf_request));                  \
+	}
+
+LIVEKIT_ROOM_MODEL_METHOD(Room, CreateRoom, CreateRoomRequest, Room, CreateRoomRequest)
+LIVEKIT_ROOM_MODEL_METHOD(ListRoomsResponse, ListRooms, ListRoomsRequest, ListRoomsResponse,
+                          ListRoomsRequest)
+LIVEKIT_ROOM_MODEL_METHOD(DeleteRoomResponse, DeleteRoom, DeleteRoomRequest, DeleteRoomResponse,
+                          DeleteRoomRequest)
+LIVEKIT_ROOM_MODEL_METHOD(ListParticipantsResponse, ListParticipants, ListParticipantsRequest,
+                          ListParticipantsResponse, ListParticipantsRequest)
+LIVEKIT_ROOM_MODEL_METHOD(ParticipantInfo, GetParticipant, RoomParticipantIdentity, ParticipantInfo,
+                          RoomParticipantIdentity)
+LIVEKIT_ROOM_MODEL_METHOD(RemoveParticipantResponse, RemoveParticipant, RoomParticipantIdentity,
+                          RemoveParticipantResponse, RoomParticipantIdentity)
+LIVEKIT_ROOM_MODEL_METHOD(MuteRoomTrackResponse, MutePublishedTrack, MuteRoomTrackRequest,
+                          MuteRoomTrackResponse, MuteRoomTrackRequest)
+LIVEKIT_ROOM_MODEL_METHOD(ParticipantInfo, UpdateParticipant, UpdateParticipantRequest,
+                          ParticipantInfo, UpdateParticipantRequest)
+LIVEKIT_ROOM_MODEL_METHOD(UpdateSubscriptionsResponse, UpdateSubscriptions,
+                          UpdateSubscriptionsRequest, UpdateSubscriptionsResponse,
+                          UpdateSubscriptionsRequest)
+LIVEKIT_ROOM_MODEL_METHOD(SendDataResponse, SendData, SendDataRequest, SendDataResponse,
+                          SendDataRequest)
+LIVEKIT_ROOM_MODEL_METHOD(Room, UpdateRoomMetadata, UpdateRoomMetadataRequest, Room,
+                          UpdateRoomMetadataRequest)
+LIVEKIT_ROOM_MODEL_METHOD(ForwardParticipantResponse, ForwardParticipant, ForwardParticipantRequest,
+                          ForwardParticipantResponse, ForwardParticipantRequest)
+LIVEKIT_ROOM_MODEL_METHOD(MoveParticipantResponse, MoveParticipant, MoveParticipantRequest,
+                          MoveParticipantResponse, MoveParticipantRequest)
+LIVEKIT_ROOM_MODEL_METHOD(PerformRpcResponse, PerformRpc, PerformRpcRequest, PerformRpcResponse,
+                          PerformRpcRequest)
+
+#undef LIVEKIT_ROOM_MODEL_METHOD
+
+model::ListRoomsResponse RoomServiceClient::ListRoomsModel() const {
+	return ListRooms(model::ListRoomsRequest{});
+}
 
 livekit::ListRoomsResponse RoomServiceClient::ListRooms() const {
 	return ListRooms(livekit::ListRoomsRequest{});

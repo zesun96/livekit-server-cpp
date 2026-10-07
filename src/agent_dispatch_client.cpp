@@ -1,6 +1,7 @@
 #include "livekit/server/agent_dispatch_client.h"
 
 #include "detail/client_context.h"
+#include "detail/proto/json_codec.h"
 #include "livekit_agent_dispatch.pb.h"
 
 #include <utility>
@@ -23,6 +24,33 @@ Response Call(const std::shared_ptr<detail::ClientContext>& context, const char*
 
 AgentDispatchClient::AgentDispatchClient(std::shared_ptr<detail::ClientContext> context)
     : context_(std::move(context)) {}
+
+#define LIVEKIT_AGENT_MODEL_METHOD(response, method, request, proto_response, proto_request_type)  \
+	model::response AgentDispatchClient::method(const model::request& request) const {             \
+		auto protobuf_request = detail::proto::FromModel<livekit::proto_request_type>(request);    \
+		return detail::proto::ToModel<model::response>(method(protobuf_request));                  \
+	}
+
+LIVEKIT_AGENT_MODEL_METHOD(AgentDispatch, CreateDispatch, CreateAgentDispatchRequest, AgentDispatch,
+                           CreateAgentDispatchRequest)
+LIVEKIT_AGENT_MODEL_METHOD(AgentDispatch, DeleteDispatch, DeleteAgentDispatchRequest, AgentDispatch,
+                           DeleteAgentDispatchRequest)
+LIVEKIT_AGENT_MODEL_METHOD(ListAgentDispatchResponse, ListDispatch, ListAgentDispatchRequest,
+                           ListAgentDispatchResponse, ListAgentDispatchRequest)
+
+#undef LIVEKIT_AGENT_MODEL_METHOD
+
+std::optional<model::AgentDispatch> AgentDispatchClient::GetDispatchModel(std::string dispatch_id,
+                                                                          std::string room) const {
+	livekit::ListAgentDispatchRequest request;
+	request.set_dispatch_id(std::move(dispatch_id));
+	request.set_room(std::move(room));
+	auto response = ListDispatch(request);
+	if (response.agent_dispatches().empty()) {
+		return std::nullopt;
+	}
+	return detail::proto::ToModel<model::AgentDispatch>(response.agent_dispatches(0));
+}
 
 livekit::AgentDispatch
 AgentDispatchClient::CreateDispatch(const livekit::CreateAgentDispatchRequest& request) const {

@@ -3,5 +3,7 @@
 include(CMakeFindDependencyMacro)
 find_dependency(Protobuf CONFIG)
 
+set(LiveKitServer_PROTOBUF_ADAPTER_AVAILABLE @LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER@)
+
 include("${CMAKE_CURRENT_LIST_DIR}/LiveKitServerTargets.cmake")
 check_required_components(LiveKitServer)

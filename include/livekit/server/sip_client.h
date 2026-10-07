@@ -1,6 +1,10 @@
 #pragma once
 
+#include "livekit/server/model/models.h"
+
+#if defined(LIVEKIT_SERVER_BUILDING_LIBRARY) || defined(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER_API)
 #include "livekit/server/protocol_fwd.h"
+#endif
 
 #include <memory>
 
@@ -13,6 +17,41 @@ class SipClient {
 public:
 	explicit SipClient(std::shared_ptr<detail::ClientContext> context);
 
+	[[nodiscard]] model::SIPInboundTrunkInfo
+	CreateInboundTrunk(const model::CreateSIPInboundTrunkRequest& request) const;
+	[[nodiscard]] model::SIPOutboundTrunkInfo
+	CreateOutboundTrunk(const model::CreateSIPOutboundTrunkRequest& request) const;
+	[[nodiscard]] model::SIPInboundTrunkInfo
+	UpdateInboundTrunk(const model::UpdateSIPInboundTrunkRequest& request) const;
+	[[nodiscard]] model::SIPOutboundTrunkInfo
+	UpdateOutboundTrunk(const model::UpdateSIPOutboundTrunkRequest& request) const;
+	[[nodiscard]] model::GetSIPInboundTrunkResponse
+	GetInboundTrunk(const model::GetSIPInboundTrunkRequest& request) const;
+	[[nodiscard]] model::GetSIPOutboundTrunkResponse
+	GetOutboundTrunk(const model::GetSIPOutboundTrunkRequest& request) const;
+	[[nodiscard]] model::ListSIPTrunkResponse
+	ListTrunks(const model::ListSIPTrunkRequest& request) const;
+	[[nodiscard]] model::ListSIPInboundTrunkResponse
+	ListInboundTrunks(const model::ListSIPInboundTrunkRequest& request) const;
+	[[nodiscard]] model::ListSIPOutboundTrunkResponse
+	ListOutboundTrunks(const model::ListSIPOutboundTrunkRequest& request) const;
+	[[nodiscard]] model::SIPTrunkInfo
+	DeleteTrunk(const model::DeleteSIPTrunkRequest& request) const;
+	[[nodiscard]] model::SIPDispatchRuleInfo
+	CreateDispatchRule(const model::CreateSIPDispatchRuleRequest& request) const;
+	[[nodiscard]] model::SIPDispatchRuleInfo
+	UpdateDispatchRule(const model::UpdateSIPDispatchRuleRequest& request) const;
+	[[nodiscard]] model::ListSIPDispatchRuleResponse
+	ListDispatchRules(const model::ListSIPDispatchRuleRequest& request) const;
+	[[nodiscard]] model::SIPDispatchRuleInfo
+	DeleteDispatchRule(const model::DeleteSIPDispatchRuleRequest& request) const;
+	[[nodiscard]] model::SIPParticipantInfo
+	CreateParticipant(const model::CreateSIPParticipantRequest& request) const;
+	[[nodiscard]] model::Empty
+	TransferParticipant(const model::TransferSIPParticipantRequest& request) const;
+
+#if defined(LIVEKIT_SERVER_BUILDING_LIBRARY) || defined(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER_API)
+	// Protobuf compatibility overloads are enabled by LiveKitServer::protobuf_adapter.
 	[[nodiscard]] livekit::SIPInboundTrunkInfo
 	CreateInboundTrunk(const livekit::CreateSIPInboundTrunkRequest& request) const;
 	[[nodiscard]] livekit::SIPOutboundTrunkInfo
@@ -45,6 +84,7 @@ public:
 	CreateParticipant(const livekit::CreateSIPParticipantRequest& request) const;
 	[[nodiscard]] google::protobuf::Empty
 	TransferParticipant(const livekit::TransferSIPParticipantRequest& request) const;
+#endif
 
 private:
 	std::shared_ptr<detail::ClientContext> context_;
