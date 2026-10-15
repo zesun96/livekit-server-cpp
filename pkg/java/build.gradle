@@ -1,0 +1,17 @@
+plugins { id 'java-library' }
+group = 'io.livekit'
+version = '0.1.0'
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(17) }
+    withSourcesJar()
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.register('offlineSmoke', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.livekit.server.OfflineSmoke'
+    if (project.hasProperty('nativeLibrary')) {
+        systemProperty 'livekit.server.java.library', project.property('nativeLibrary')
+    }
+}
+tasks.named('check') { dependsOn 'offlineSmoke' }
