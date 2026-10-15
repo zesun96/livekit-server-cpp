@@ -4,6 +4,19 @@ A standalone C++20 SDK for LiveKit server APIs and access-token creation. It is 
 separate from `livekit-client-cpp`: backend control-plane code does not pull in libwebrtc, media
 capture, or playback dependencies.
 
+## Platform status
+
+| Platform | Status |
+| --- | --- |
+| Windows x64 | Native SDK, Java JNI binding, and Ruby Fiddle binding validated locally |
+| GNU/Linux | Native HTTP and SHA-256/HS256 backends unavailable; bindings not validated |
+| macOS | Native HTTP and SHA-256/HS256 backends unavailable; bindings not validated |
+| iOS / Android | No supported target declared |
+
+On non-Windows platforms, requests require both an application-owned HTTP transport and a
+pre-issued access token. Token signing and webhook verification currently report `unsupported`.
+Portable headers and language loaders do not establish full native platform support.
+
 ## Implemented services
 
 - Room and participant administration
@@ -158,6 +171,36 @@ Server and transport failures throw `livekit::server::Error`. It includes an err
 status, and Twirp error code where available. Every logical call includes a stable
 `X-Livekit-Request-Id` header.
 
+## Language bindings
+
+| Language | Available API | Guide |
+| --- | --- | --- |
+| Java 17 | All six server services, 86 JSON models, Video/SIP/Agent token grants, verified webhook snapshots and callbacks, and custom HTTP transport | [Java binding](pkg/java/README.md) |
+| Ruby 3.1+ | All six server services, 86 Hash/JSON models, Video/SIP/Agent token grants, verified webhook snapshots and callbacks, and custom HTTP transport | [Ruby binding](pkg/ruby/README.md) |
+
+Both bindings expose the 52 model-based service methods for Room, Egress, Ingress, SIP,
+AgentDispatch, and Connector. They use the C++ SDK for request validation, authentication,
+transport, and error handling. Requests and responses follow canonical protobuf JSON; language
+consumers do not need generated protobuf classes. Calls are synchronous, with application-owned
+executors or threads available for asynchronous use.
+
+The Java package uses a JNI bridge and has no third-party Java dependencies. Build the native
+bridge with CMake, then compile/package Java with the JDK or Gradle. Set
+`livekit.server.java.library` to the built bridge's absolute path. See the
+[Java examples](pkg/java/examples/README.md) for a room-listing request.
+
+The Ruby gem loads its C ABI bridge through Fiddle and imports as `require 'livekit/server'`.
+Build the bridge with CMake and the gem with `gem build`, then set `LIVEKIT_SERVER_RUBY_LIBRARY`
+to the bridge path. Fiddle, JSON, and Base64 are the runtime gem dependencies. The gem does not
+automatically build or bundle the native SDK. The [Ruby example](pkg/ruby/examples/list_rooms.rb)
+lists rooms using environment credentials.
+
+The bridges are built separately from the main SDK build and must match the language runtime's
+architecture. Keep native compiler, runtime, and protobuf dependencies consistent; the binding
+guides include Windows static-runtime build commands. No explicit API-object cleanup is needed:
+each synchronous call owns its native state. See the [binding support matrix](pkg/README.md) for
+API coverage, packaging, examples, validation, and platform limits.
+
 ## Tests
 
 Unit tests use an in-memory transport and never access the network. Server integration tests are
@@ -172,3 +215,21 @@ Integration tests read credentials from the `LIVEKIT_*` environment variables an
 are unavailable. The webhook integration test listens only on `127.0.0.1:17890`; configure the
 local LiveKit Server webhook URL to that address before running it. It creates and deletes a unique
 room and requires a `room_started` event to pass signature verification and reach the callback.
+
+The Java and Ruby bindings have separate offline smoke tests covering all service routes, binary
+and Unicode payloads, token signing, webhook verification, callback exceptions, and concurrent
+calls. Ruby also exercises GC and compaction during callbacks. These use in-memory transports;
+running them does not require a server or open network connections. Build and run commands are in
+the [binding guides](pkg/README.md#offline-validation). Real-server binding integration has not
+been validated; the room-listing examples contact a server only when explicitly run.
+
+## Documentation
+
+| Topic | Document |
+| --- | --- |
+| SDK-owned models and protobuf compatibility | [Public API boundary](docs/public-api-boundary.md) |
+| Language API, example, and platform coverage | [Language bindings](pkg/README.md) |
+| Java build, packaging, tokens, and webhooks | [Java guide](pkg/java/README.md) |
+| Ruby build, gem packaging, tokens, and webhooks | [Ruby guide](pkg/ruby/README.md) |
+| C++ room administration example | [Room service](examples/room_service.cpp) |
+| C++ webhook handler example | [Webhook handler](examples/webhook_handler.cpp) |
