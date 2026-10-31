@@ -60,3 +60,9 @@ package contains it.
 The SDK links protobuf as a normal binary dependency. It never merges protobuf static objects into
 the SDK archive, avoiding duplicate-symbol and ABI conflicts in applications that already use
 protobuf.
+
+## Language-independent binary boundary
+
+`livekit/server/c_api.h` is a pure C header independent of protobuf and the C++ standard library.
+The [C ABI contract](c-abi.md) defines versioning, allocation/freeing, JSON errors and synchronous
+callbacks. Ruby compatibility exports and Java JNI both delegate SDK operations to this boundary.

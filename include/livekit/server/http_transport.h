@@ -30,8 +30,8 @@ public:
 	virtual HttpResponse Send(const HttpRequest& request) = 0;
 };
 
-// Uses WinHTTP on Windows. Other platforms can provide an application-owned
-// HttpTransport until a native backend is added.
+// Uses WinHTTP on Windows by default; libcurl on Linux/macOS (or when selected
+// with LIVEKIT_SERVER_USE_CURL). Applications may supply their own transport.
 std::shared_ptr<HttpTransport> CreateDefaultHttpTransport();
 
 } // namespace livekit::server

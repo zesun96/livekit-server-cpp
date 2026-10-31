@@ -33,8 +33,8 @@ If the Java runtime lacks JNI headers, pass `-DJAVA_JNI_INCLUDE_DIR=...` with a 
 both `jni.h` and its platform's `jni_md.h` (the existing client binding's local build directory is
 usable in this workspace). For a full JDK, CMake discovers both include directories automatically.
 For other dependency layouts, point `CMAKE_PREFIX_PATH` at the matching protobuf package. Linux and
-macOS use the corresponding `.so`/`.dylib`; an application-owned `HttpTransport` is required on those
-platforms because the C++ SDK's default HTTP backend currently uses Windows WinHTTP.
+macOS use the corresponding `.so`/`.dylib`; the native SDK selects libcurl/OpenSSL on those
+platforms, whose builds and runtime behavior still need platform validation.
 
 Alternatively, run `gradle -p pkg/java build -PnativeLibrary=<absolute-native-library-path>` to
 build the JAR and run the offline smoke test. Gradle builds Java sources only; build JNI with CMake
@@ -114,7 +114,7 @@ Real-server integration is opt-in and is not part of this test. Gradle itself is
 run it; the `javac`/`java` commands above use only the JDK.
 
 After adding model-based methods to C++ headers, regenerate the checked-in Java service/model
-wrappers and native dispatch table with:
+wrappers with:
 
 ```powershell
 python pkg/java/scripts/generate_api.py
@@ -125,3 +125,7 @@ Windows JNI build and offline tests have been exercised locally. Linux/macOS and
 behavior require separate validation.
 
 See [examples](examples/README.md) for a minimal server request.
+
+JNI delegates operations to the [common C ABI](../../docs/c-abi.md). After native API changes,
+regenerate its shared dispatch and grant mappings with `python scripts/generate_c_api.py`
+from the repository root. [Portable backends](../../docs/platform-backends.md) apply equally to JNI.

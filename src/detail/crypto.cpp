@@ -2,13 +2,16 @@
 
 #include "livekit/server/error.h"
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(LIVEKIT_SERVER_USE_OPENSSL)
 #include <windows.h>
 
 #include <bcrypt.h>
 #endif
 
 #include <limits>
+#ifdef LIVEKIT_SERVER_USE_OPENSSL
+#include <openssl/evp.h>
+#endif
 
 namespace livekit::server::detail {
 namespace {
@@ -37,7 +40,7 @@ std::string Base64(std::span<const std::uint8_t> data, const char* alphabet, boo
 	return output;
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(LIVEKIT_SERVER_USE_OPENSSL)
 std::vector<std::uint8_t> BCryptDigest(std::string_view secret, std::string_view value, bool hmac) {
 	if (secret.size() > std::numeric_limits<ULONG>::max() ||
 	    value.size() > std::numeric_limits<ULONG>::max()) {
@@ -114,21 +117,32 @@ int Base64UrlValue(char ch) {
 } // namespace
 
 std::vector<std::uint8_t> Sha256(std::string_view value) {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(LIVEKIT_SERVER_USE_OPENSSL)
 	return BCryptDigest({}, value, false);
 #else
-	(void)value;
-	throw Error(ErrorCode::unsupported, "SHA-256 is not available on this platform");
+	std::vector<std::uint8_t> digest(32);
+	unsigned int size = 0;
+	if (EVP_Digest(value.data(), value.size(), digest.data(), &size, EVP_sha256(), nullptr) != 1 ||
+	    size != 32) {
+		throw Error(ErrorCode::authentication, "SHA-256 operation failed");
+	}
+	return digest;
 #endif
 }
 
 std::vector<std::uint8_t> HmacSha256(std::string_view secret, std::string_view value) {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(LIVEKIT_SERVER_USE_OPENSSL)
 	return BCryptDigest(secret, value, true);
 #else
-	(void)secret;
-	(void)value;
-	throw Error(ErrorCode::unsupported, "HS256 is not available on this platform");
+	std::vector<std::uint8_t> digest(32);
+	std::size_t size = 0;
+	if (!EVP_Q_mac(nullptr, "HMAC", nullptr, "SHA256", nullptr, secret.data(), secret.size(),
+	               reinterpret_cast<const unsigned char*>(value.data()), value.size(),
+	               digest.data(), digest.size(), &size) ||
+	    size != 32) {
+		throw Error(ErrorCode::authentication, "HS256 operation failed");
+	}
+	return digest;
 #endif
 }
 

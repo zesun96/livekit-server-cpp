@@ -9,13 +9,14 @@ capture, or playback dependencies.
 | Platform | Status |
 | --- | --- |
 | Windows x64 | Native SDK, Java JNI binding, and Ruby Fiddle binding validated locally |
-| GNU/Linux | Native HTTP and SHA-256/HS256 backends unavailable; bindings not validated |
-| macOS | Native HTTP and SHA-256/HS256 backends unavailable; bindings not validated |
+| GNU/Linux | libcurl + OpenSSL backends implemented; platform/bindings not validated |
+| macOS | libcurl + OpenSSL backends implemented; platform/bindings not validated |
 | iOS / Android | No supported target declared |
 
-On non-Windows platforms, requests require both an application-owned HTTP transport and a
-pre-issued access token. Token signing and webhook verification currently report `unsupported`.
-Portable headers and language loaders do not establish full native platform support.
+Linux/macOS select libcurl (>= 7.85) and OpenSSL (>= 3.0) by default for HTTP(S), SHA-256,
+HS256 signing and webhook verification. These implementations still require target-platform
+validation. A portable library reduces OS-specific code; it does not replace platform testing.
+See [portable backend build and validation](docs/platform-backends.md).
 
 ## Implemented services
 
@@ -26,7 +27,7 @@ Portable headers and language loaders do not establish full native platform supp
 - WhatsApp and Twilio connectors
 - Verified LiveKit webhook event callbacks
 - LiveKit access tokens signed with HS256
-- Twirp-over-HTTP protobuf transport, with connection reuse through WinHTTP on Windows
+- Twirp-over-HTTP protobuf transport, with connection reuse through WinHTTP or libcurl
 
 The primary service API uses SDK-owned models and does not require generated protobuf headers:
 
@@ -165,7 +166,7 @@ when linking this library together with another SDK that also supplies generated
 
 Windows uses WinHTTP and Windows CNG, so no extra HTTP, TLS, or cryptography dependency is needed.
 `ApiOptions::transport` accepts an application-owned implementation for tests, custom proxy or
-certificate policy, and future non-Windows backends.
+certificate policy, and alternative HTTP libraries.
 
 Server and transport failures throw `livekit::server::Error`. It includes an error category, HTTP
 status, and Twirp error code where available. Every logical call includes a stable
@@ -233,3 +234,10 @@ been validated; the room-listing examples contact a server only when explicitly 
 | Ruby build, gem packaging, tokens, and webhooks | [Ruby guide](pkg/ruby/README.md) |
 | C++ room administration example | [Room service](examples/room_service.cpp) |
 | C++ webhook handler example | [Webhook handler](examples/webhook_handler.cpp) |
+
+## Shared C ABI
+
+All language bindings use the [public C ABI](docs/c-abi.md) in
+`include/livekit/server/c_api.h`: versioned entry points, stable error values, library-owned
+result buffers, and synchronous callbacks with explicit context and byte lengths. Ruby retains
+its previous symbols as compatibility wrappers; JNI translates Java values and exceptions.

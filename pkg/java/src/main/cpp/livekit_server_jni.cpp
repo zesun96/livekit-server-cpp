@@ -1,16 +1,19 @@
 #include <jni.h>
 
-#include "livekit/server/access_token.h"
+#include "detail/crypto.h"
+#include "livekit/server/c_api.h"
 #include "livekit/server/error.h"
-#include "livekit/server/livekit_api.h"
+#include "livekit/server/http_transport.h"
+#include "livekit/server/webhook_receiver.h"
 
 #include <google/protobuf/struct.pb.h>
 #include <google/protobuf/util/json_util.h>
 
 #include <chrono>
+#include <deque>
+#include <exception>
 #include <initializer_list>
 #include <limits>
-#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -160,17 +163,6 @@ const Value& Field(const Struct& obj, const char* key) {
 std::string String(const Struct& obj, const char* key) { return Field(obj, key).string_value(); }
 bool Bool(const Struct& obj, const char* key) { return Field(obj, key).bool_value(); }
 
-std::map<std::string, std::string> Strings(const Struct& obj) {
-	std::map<std::string, std::string> result;
-	for (const auto& [key, value] : obj.fields()) {
-		if (value.kind_case() != Value::kStringValue) {
-			throw Error(ErrorCode::invalid_argument, "expected string map value");
-		}
-		result.emplace(key, value.string_value());
-	}
-	return result;
-}
-
 // Borrowed JVM references live only for the synchronous native call. No thread is attached,
 // no global references are retained, and Java transport exceptions pass through unchanged.
 class JavaTransport final : public HttpTransport {
@@ -237,71 +229,139 @@ private:
 	jobject transport_;
 };
 
-ApiOptions Options(JNIEnv* env, jbyteArray json, jobject transport) {
-	const auto obj = Parse(env, json);
-	ApiOptions options;
-	options.url = String(obj, "url");
-	options.api_key = String(obj, "apiKey");
-	options.api_secret = String(obj, "apiSecret");
-	options.access_token = String(obj, "accessToken");
-	options.timeout = std::chrono::milliseconds(std::stoll(String(obj, "timeoutMs")));
-	if (transport) {
-		options.transport = std::make_shared<JavaTransport>(env, transport);
-	}
-	return options;
+Value TextValue(std::string_view text) {
+	Value result;
+	result.set_string_value(std::string(text));
+	return result;
 }
 
-std::string Call(LiveKitApi& api, const std::string& operation, const std::string& request) {
-#include "dispatch.inc"
-	throw Error(ErrorCode::invalid_argument, "unknown server operation");
+std::string Encode(const Struct& value) {
+	std::string result;
+	if (!google::protobuf::util::MessageToJsonString(value, &result).ok())
+		throw Error(ErrorCode::protocol, "could not encode binding JSON");
+	return result;
 }
 
-AccessToken Token(const Struct& obj) {
-	AccessToken token(String(obj, "apiKey"), String(obj, "apiSecret"));
-	token.SetIdentity(String(obj, "identity"))
-	    .SetName(String(obj, "name"))
-	    .SetMetadata(String(obj, "metadata"))
-	    .SetAttributes(Strings(Field(obj, "attributes").struct_value()));
-	if (obj.fields().contains("validFor")) {
-		token.SetValidFor(std::chrono::seconds(std::stoll(String(obj, "validFor"))));
-	}
-	if (obj.fields().contains("video")) {
-		const auto& v = Field(obj, "video").struct_value();
-		VideoGrant grant;
-		grant.room_create = Bool(v, "roomCreate");
-		grant.room_list = Bool(v, "roomList");
-		grant.room_record = Bool(v, "roomRecord");
-		grant.room_admin = Bool(v, "roomAdmin");
-		grant.room_join = Bool(v, "roomJoin");
-		grant.room = String(v, "room");
-		grant.destination_room = String(v, "destinationRoom");
-		grant.ingress_admin = Bool(v, "ingressAdmin");
-		if (v.fields().contains("canPublish"))
-			grant.can_publish = Bool(v, "canPublish");
-		if (v.fields().contains("canSubscribe"))
-			grant.can_subscribe = Bool(v, "canSubscribe");
-		if (v.fields().contains("canPublishData"))
-			grant.can_publish_data = Bool(v, "canPublishData");
-		if (v.fields().contains("canUpdateOwnMetadata")) {
-			grant.can_update_own_metadata = Bool(v, "canUpdateOwnMetadata");
+Struct ParseJson(std::string_view json) {
+	Struct result;
+	if (!google::protobuf::util::JsonStringToMessage(std::string(json), &result).ok())
+		throw Error(ErrorCode::protocol, "invalid C ABI response");
+	return result;
+}
+
+// Translate Java option names only; attribute keys and protocol JSON remain verbatim.
+Struct Options(const Struct& source, bool grants = false) {
+	Struct result;
+	for (const auto& [key, value] : source.fields()) {
+		std::string name;
+		for (unsigned char ch : key) {
+			if (ch >= 'A' && ch <= 'Z') {
+				name += '_';
+				name += static_cast<char>(ch + 'a' - 'A');
+			} else
+				name += static_cast<char>(ch);
 		}
-		for (const auto& value : Field(v, "canPublishSources").list_value().values()) {
-			grant.can_publish_sources.push_back(value.string_value());
+		auto& target = (*result.mutable_fields())[name];
+		if (grants && (key == "video" || key == "sip" || key == "agent"))
+			*target.mutable_struct_value() = Options(value.struct_value());
+		else
+			target = value;
+	}
+	return result;
+}
+
+struct CallbackContext {
+	JNIEnv* env;
+	jobject transport;
+	jobject key_provider;
+	std::deque<std::string> responses;
+	std::exception_ptr failure;
+};
+
+int32_t Exchange(void* user, const char* json, std::size_t length, const char** output,
+                 std::size_t* size) noexcept {
+	auto& context = *static_cast<CallbackContext*>(user);
+	try {
+		const auto input = ParseJson({json, length});
+		Struct response;
+		auto& fields = *response.mutable_fields();
+		if (String(input, "kind") == "transport") {
+			HttpRequest request;
+			request.url = String(input, "url");
+			request.method = String(input, "method");
+			const auto body = detail::Base64UrlDecode(String(input, "body"));
+			request.body.assign(body.begin(), body.end());
+			request.timeout = std::chrono::milliseconds(std::stoll(String(input, "timeout_ms")));
+			for (const auto& pair : Field(input, "headers").list_value().values())
+				request.headers.emplace_back(pair.list_value().values(0).string_value(),
+				                             pair.list_value().values(1).string_value());
+			const auto result = JavaTransport(context.env, context.transport).Send(request);
+			fields["status_code"] = TextValue(std::to_string(result.status_code));
+			fields["body"] = TextValue(detail::Base64UrlEncode(result.body));
+		} else {
+			auto* env = context.env;
+			if (env->PushLocalFrame(16) != JNI_OK)
+				throw PendingException{};
+			struct Frame {
+				JNIEnv* env;
+				~Frame() { env->PopLocalFrame(nullptr); }
+			} frame{env};
+			auto cls = env->FindClass("java/util/function/Function");
+			Check(env);
+			auto apply = env->GetMethodID(cls, "apply", "(Ljava/lang/Object;)Ljava/lang/Object;");
+			Check(env);
+			auto issuer = Text(env, String(input, "key"));
+			auto secret =
+			    static_cast<jstring>(env->CallObjectMethod(context.key_provider, apply, issuer));
+			Check(env);
+			fields["secret"] = TextValue(secret ? Utf8(env, secret) : std::string{});
 		}
-		grant.hidden = Bool(v, "hidden");
-		grant.recorder = Bool(v, "recorder");
-		grant.agent = Bool(v, "agent");
-		token.SetVideoGrant(std::move(grant));
+		context.responses.push_back(Encode(response));
+		*output = context.responses.back().data();
+		*size = context.responses.back().size();
+		return 0;
+	} catch (...) {
+		context.failure = std::current_exception();
+		return 1;
 	}
-	if (obj.fields().contains("sip")) {
-		const auto& v = Field(obj, "sip").struct_value();
-		token.SetSipGrant({Bool(v, "admin"), Bool(v, "call")});
+}
+
+Value Invoke(const Struct& input, CallbackContext& context) {
+	const auto json = Encode(input);
+	std::size_t length = 0;
+	std::unique_ptr<void, decltype(&lks_free)> output(
+	    lks_invoke(json.data(), json.size(), Exchange, &context, &length), lks_free);
+	if (context.failure)
+		std::rethrow_exception(context.failure);
+	if (!output)
+		throw std::bad_alloc();
+	const auto response = ParseJson({static_cast<const char*>(output.get()), length});
+	if (!Bool(response, "ok")) {
+		throw Error(
+		    static_cast<ErrorCode>(static_cast<int>(Field(response, "code").number_value())),
+		    String(response, "message"),
+		    static_cast<int>(Field(response, "http_status").number_value()),
+		    String(response, "twirp_code"));
 	}
-	if (obj.fields().contains("agent")) {
-		const auto& v = Field(obj, "agent").struct_value();
-		token.SetAgentGrant({Bool(v, "admin"), Bool(v, "simulationAdmin")});
-	}
-	return token;
+	return Field(response, "value");
+}
+
+Struct Input(const char* operation, Struct options) {
+	Struct input;
+	(*input.mutable_fields())["operation"] = TextValue(operation);
+	*(*input.mutable_fields())["options"].mutable_struct_value() = std::move(options);
+	return input;
+}
+
+Value Call(JNIEnv* env, jbyteArray options, jobject transport, const char* operation,
+           std::initializer_list<std::pair<const char*, std::string>> fields) {
+	auto opts = Options(Parse(env, options));
+	(*opts.mutable_fields())["use_transport"].set_bool_value(transport != nullptr);
+	auto input = Input(operation, std::move(opts));
+	for (const auto& [name, value] : fields)
+		(*input.mutable_fields())[name] = TextValue(value);
+	CallbackContext context{env, transport, nullptr, {}, {}};
+	return Invoke(input, context);
 }
 } // namespace
 
@@ -324,36 +384,31 @@ JNIEXPORT jbyteArray JNICALL Java_io_livekit_server_Native_call(JNIEnv* env, jcl
 			throw;
 		}
 		env->ReleaseStringUTFChars(operation, chars);
-		LiveKitApi api(Options(env, options, transport));
-		return Bytes(env, Call(api, op, Bytes(env, request)));
+		return Bytes(env,
+		             Call(env, options, transport, op.c_str(), {{"request", Bytes(env, request)}})
+		                 .string_value());
 	});
 }
 
 JNIEXPORT jbyteArray JNICALL Java_io_livekit_server_Native_getDispatch(
     JNIEnv* env, jclass, jbyteArray options, jbyteArray id, jbyteArray room, jobject transport) {
 	return Guard(env, [&]() -> jbyteArray {
-		LiveKitApi api(Options(env, options, transport));
-		const auto result = api.AgentDispatch().GetDispatchModel(Bytes(env, id), Bytes(env, room));
-		return result ? Bytes(env, result->Json()) : nullptr;
+		const auto result = Call(env, options, transport, "get_dispatch",
+		                         {{"dispatch_id", Bytes(env, id)}, {"room", Bytes(env, room)}});
+		return result.kind_case() == Value::kNullValue ? nullptr
+		                                               : Bytes(env, result.string_value());
 	});
 }
 
 JNIEXPORT jbyteArray JNICALL Java_io_livekit_server_Native_token(JNIEnv* env, jclass,
                                                                  jbyteArray options, jlong now) {
 	return Guard(env, [&]() -> jbyteArray {
-		// system_clock may have finer resolution than seconds. Bound both timestamp and expiry
-		// before conversion to avoid overflowing the native clock representation.
-		using Clock = std::chrono::system_clock;
-		const auto max =
-		    std::chrono::duration_cast<std::chrono::seconds>(Clock::duration::max()).count();
-		const auto obj = Parse(env, options);
-		const auto ttl =
-		    obj.fields().contains("validFor") ? std::stoll(String(obj, "validFor")) : 21600;
-		if (now < 0 || ttl <= 0 || ttl > max || now > max - ttl) {
-			throw Error(ErrorCode::invalid_argument,
-			            "token timestamp or lifetime exceeds native clock range");
-		}
-		return Bytes(env, Token(obj).ToJwt(Clock::time_point(std::chrono::seconds(now))));
+		auto opts = Options(Parse(env, options), true);
+		if (!opts.fields().contains("valid_for"))
+			(*opts.mutable_fields())["valid_for"] = TextValue("21600");
+		(*opts.mutable_fields())["now"] = TextValue(std::to_string(now));
+		CallbackContext context{env, nullptr, nullptr, {}, {}};
+		return Bytes(env, Invoke(Input("token", std::move(opts)), context).string_value());
 	});
 }
 
@@ -364,24 +419,44 @@ JNIEXPORT jobject JNICALL Java_io_livekit_server_Native_receive(JNIEnv* env, jcl
 	return Guard(env, [&]() -> jobject {
 		if (env->EnsureLocalCapacity(64) != JNI_OK)
 			throw PendingException{};
-		std::unique_ptr<WebhookReceiver> receiver;
-		if (key_provider) {
-			receiver = std::make_unique<WebhookReceiver>([&](const std::string& key) {
-				auto cls = env->FindClass("java/util/function/Function");
-				Check(env);
-				auto apply =
-				    env->GetMethodID(cls, "apply", "(Ljava/lang/Object;)Ljava/lang/Object;");
-				Check(env);
-				auto issuer = Text(env, key);
-				auto secret =
-				    static_cast<jstring>(env->CallObjectMethod(key_provider, apply, issuer));
-				Check(env);
-				return secret ? Utf8(env, secret) : std::string{};
-			});
-		} else {
-			receiver = std::make_unique<WebhookReceiver>(Strings(Parse(env, secrets)));
+		Struct opts;
+		auto& fields = *opts.mutable_fields();
+		fields["body"] = TextValue(detail::Base64UrlEncode(Bytes(env, body)));
+		fields["authorization"] = TextValue(Bytes(env, authorization));
+		fields["use_key_provider"].set_bool_value(key_provider != nullptr);
+		if (!key_provider)
+			*fields["secrets"].mutable_struct_value() = Parse(env, secrets);
+		CallbackContext context{env, nullptr, key_provider, {}, {}};
+		const auto value = Invoke(Input("webhook", std::move(opts)), context);
+		const auto& obj = value.struct_value();
+		WebhookEvent event;
+		event.event = String(obj, "event");
+		event.id = String(obj, "id");
+		event.created_at = std::stoll(String(obj, "created_at"));
+		event.raw_body = String(obj, "raw_body");
+		if (obj.fields().contains("room")) {
+			const auto& v = Field(obj, "room").struct_value();
+			event.room = WebhookRoom{String(v, "sid"), String(v, "name"), String(v, "metadata")};
 		}
-		const auto event = receiver->Receive(Bytes(env, body), Bytes(env, authorization));
+		if (obj.fields().contains("participant")) {
+			const auto& v = Field(obj, "participant").struct_value();
+			event.participant = WebhookParticipant{String(v, "sid"), String(v, "identity"),
+			                                       String(v, "name"), String(v, "metadata")};
+		}
+		if (obj.fields().contains("track")) {
+			const auto& v = Field(obj, "track").struct_value();
+			event.track = WebhookTrack{String(v, "sid"), String(v, "name")};
+		}
+		if (obj.fields().contains("egress")) {
+			const auto& v = Field(obj, "egress").struct_value();
+			event.egress =
+			    WebhookEgress{String(v, "egress_id"), String(v, "room_id"), String(v, "room_name")};
+		}
+		if (obj.fields().contains("ingress")) {
+			const auto& v = Field(obj, "ingress").struct_value();
+			event.ingress =
+			    WebhookIngress{String(v, "ingress_id"), String(v, "name"), String(v, "room_name")};
+		}
 		auto cls = env->FindClass("io/livekit/server/WebhookEvent");
 		Check(env);
 		auto ctor = env->GetMethodID(
