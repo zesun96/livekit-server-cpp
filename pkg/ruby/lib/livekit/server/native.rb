@@ -19,7 +19,16 @@ module LiveKit
                       'liblivekitserver_ruby.so'
                     end
           library = configured && !configured.empty? ? File.expand_path(configured) : default
-          @handle = Fiddle.dlopen(library)
+          if configured && !configured.empty? && defined?(RubyInstaller::Runtime) &&
+              RubyInstaller::Runtime.respond_to?(:add_dll_directory)
+            # RubyInstaller can disable PATH-based DLL lookup. Load sibling dependencies
+            # from the explicitly configured bridge directory, then remove the search entry.
+            RubyInstaller::Runtime.add_dll_directory(File.dirname(library)) do
+              @handle = Fiddle.dlopen(library)
+            end
+          else
+            @handle = Fiddle.dlopen(library)
+          end
           abi = Fiddle::Function.new(@handle['lks_ruby_abi_version'], [], Fiddle::TYPE_INT)
           raise LoadError, 'unsupported LiveKit Ruby bridge ABI' unless abi.call == 1
           @free = Fiddle::Function.new(@handle['lks_ruby_free'], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID)

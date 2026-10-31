@@ -50,7 +50,7 @@ and key providers. Webhook callbacks execute synchronously on the calling thread
 | Item | [Java](java/README.md#build) | [Ruby](ruby/README.md#build-and-run) |
 | --- | --- | --- |
 | Language entry point | `io.livekit.server.LiveKitApi` | `require 'livekit/server'`, then `LiveKit::Server::LiveKitApi` |
-| Native boundary | JNI bridge linked with the C++ SDK | C ABI bridge loaded through Fiddle |
+| Native boundary | JNI adapter over the shared C ABI | Compatibility adapter over the shared C ABI |
 | Native build | `cmake -S pkg/java -B <build-dir>` | `cmake -S pkg/ruby -B <build-dir>` |
 | Windows bridge filename | `livekitserver_java.dll` | `livekitserver_ruby.dll` |
 | Explicit bridge path | JVM property `livekit.server.java.library` | Environment variable `LIVEKIT_SERVER_RUBY_LIBRARY` |
@@ -114,7 +114,7 @@ binding integration have not been validated.
 
 This table follows the [native SDK platform status](../README.md#platform-status). `Validated`
 means the binding's native build and offline tests ran locally. `Limited / unvalidated` means
-native backends are missing and the binding has not been exercised there. `No target` means no
+portable backends exist and the binding has not been exercised there. `No target` means no
 supported target is declared. A loader filename or portable language code does not establish
 full SDK support.
 
@@ -126,6 +126,7 @@ full SDK support.
 | iOS | No target | No target |
 | Android | No target | No target |
 
-The default HTTP transport uses WinHTTP, and SHA-256/HS256 uses Windows CNG. Non-Windows requests
-need a custom transport and a pre-issued access token. Token signing and webhook verification
-currently report `unsupported` there, even when a custom HTTP transport is supplied.
+Windows defaults to WinHTTP/CNG. Linux/macOS default to libcurl/OpenSSL for HTTP(S),
+signing and verification. Both portable backends can be selected on Windows for local checks;
+Linux/macOS builds and runtime behavior still need platform validation. See
+[backend configuration](../docs/platform-backends.md) and the [common C ABI](../docs/c-abi.md).

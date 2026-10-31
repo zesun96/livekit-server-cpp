@@ -2,7 +2,7 @@
 
 #include "livekit/server/error.h"
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(LIVEKIT_SERVER_USE_CURL)
 #include <windows.h>
 
 #include <winhttp.h>
@@ -20,7 +20,7 @@
 namespace livekit::server {
 namespace {
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(LIVEKIT_SERVER_USE_CURL)
 
 std::wstring Utf8ToWide(const std::string& value) {
 	if (value.empty()) {
@@ -173,25 +173,19 @@ private:
 	std::map<std::wstring, HINTERNET> connections_;
 };
 
-#else
-
-class UnsupportedHttpTransport final : public HttpTransport {
-public:
-	HttpResponse Send(const HttpRequest&) override {
-		throw Error(ErrorCode::unsupported,
-		            "no default HTTP transport is available on this platform");
-	}
-};
-
 #endif
 
 } // namespace
 
+#ifdef LIVEKIT_SERVER_USE_CURL
+std::shared_ptr<HttpTransport> CreateCurlHttpTransport();
+#endif
+
 std::shared_ptr<HttpTransport> CreateDefaultHttpTransport() {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(LIVEKIT_SERVER_USE_CURL)
 	return std::make_shared<WinHttpTransport>();
 #else
-	return std::make_shared<UnsupportedHttpTransport>();
+	return CreateCurlHttpTransport();
 #endif
 }
 

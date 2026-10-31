@@ -4,7 +4,7 @@ project(
   livekit-server-cpp
   VERSION 0.1.0
   DESCRIPTION "C++20 SDK for LiveKit server APIs and access tokens"
-  LANGUAGES CXX
+  LANGUAGES C CXX
 )
 
 include(FetchContent)
@@ -17,6 +17,24 @@ option(LIVEKIT_SERVER_BUILD_EXAMPLES "Build examples" ON)
 option(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER
   "Expose generated LiveKit protobuf headers through a compatibility target" ON)
 set(LIVEKIT_PROTOCOL_ROOT "" CACHE PATH "Path to a livekit/protocol source tree")
+
+# Both portable backends can also be exercised on Windows before platform CI exists.
+if(WIN32)
+  set(_portable_default OFF)
+else()
+  set(_portable_default ON)
+endif()
+option(LIVEKIT_SERVER_USE_CURL "Use libcurl HTTP backend" ${_portable_default})
+option(LIVEKIT_SERVER_USE_OPENSSL "Use OpenSSL SHA-256/HS256 backend" ${_portable_default})
+if(NOT WIN32 AND (NOT LIVEKIT_SERVER_USE_CURL OR NOT LIVEKIT_SERVER_USE_OPENSSL))
+  message(FATAL_ERROR "Non-Windows builds require the libcurl and OpenSSL backends")
+endif()
+if(LIVEKIT_SERVER_USE_CURL)
+  find_package(CURL 7.85 REQUIRED)
+endif()
+if(LIVEKIT_SERVER_USE_OPENSSL)
+  find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
+endif()
 
 find_package(Protobuf CONFIG REQUIRED)
 
@@ -72,6 +90,7 @@ protobuf_generate(
 
 add_library(
   livekitserver
+  src/c_api.cpp
   src/access_token.cpp
   src/agent_dispatch_client.cpp
   src/connector_client.cpp
@@ -100,6 +119,10 @@ target_include_directories(
 )
 target_link_libraries(livekitserver PRIVATE protobuf::libprotobuf)
 target_compile_definitions(livekitserver PRIVATE LIVEKIT_SERVER_BUILDING_LIBRARY=1)
+set_target_properties(livekitserver PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(BUILD_SHARED_LIBS)
+  target_compile_definitions(livekitserver PUBLIC LIVEKIT_SERVER_C_SHARED=1)
+endif()
 
 if(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER)
   add_library(livekitserver_protobuf_adapter INTERFACE)
@@ -112,6 +135,16 @@ if(LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER)
     LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER_API=1)
   target_link_libraries(livekitserver_protobuf_adapter INTERFACE
     LiveKitServer::livekitserver protobuf::libprotobuf)
+endif()
+
+if(LIVEKIT_SERVER_USE_CURL)
+  target_sources(livekitserver PRIVATE src/detail/curl_transport.cpp)
+  target_compile_definitions(livekitserver PRIVATE LIVEKIT_SERVER_USE_CURL=1)
+  target_link_libraries(livekitserver PRIVATE CURL::libcurl)
+endif()
+if(LIVEKIT_SERVER_USE_OPENSSL)
+  target_compile_definitions(livekitserver PRIVATE LIVEKIT_SERVER_USE_OPENSSL=1)
+  target_link_libraries(livekitserver PRIVATE OpenSSL::Crypto)
 endif()
 
 if(WIN32)
@@ -164,6 +197,22 @@ if(LIVEKIT_SERVER_BUILD_TESTS)
     target_link_libraries(livekit_server_protobuf_adapter_headers_test
       PRIVATE LiveKitServer::protobuf_adapter)
   endif()
+
+  add_executable(livekit_server_c_api_tests test/unit/c_api_test.cpp)
+  target_include_directories(livekit_server_c_api_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  if(LIVEKIT_SERVER_USE_CURL)
+    target_compile_definitions(livekit_server_c_api_tests PRIVATE LIVEKIT_SERVER_TEST_CURL=1)
+  endif()
+  target_link_libraries(livekit_server_c_api_tests PRIVATE
+    LiveKitServer::livekitserver GTest::gtest_main protobuf::libprotobuf)
+  gtest_discover_tests(livekit_server_c_api_tests TEST_PREFIX "unit."
+    PROPERTIES LABELS "unit" TIMEOUT 10 DISCOVERY_MODE PRE_TEST)
+
+  add_executable(livekit_server_c_header_test test/consumer/c_api.c)
+  target_link_libraries(livekit_server_c_header_test PRIVATE LiveKitServer::livekitserver)
+  set_target_properties(livekit_server_c_header_test PROPERTIES LINKER_LANGUAGE CXX)
+  add_test(NAME unit.c_header COMMAND livekit_server_c_header_test)
+  set_tests_properties(unit.c_header PROPERTIES LABELS "unit" TIMEOUT 10)
 
   add_executable(livekit_server_unit_tests test/unit/server_sdk_test.cpp)
   target_include_directories(livekit_server_unit_tests PRIVATE "${LIVEKIT_SERVER_GENERATED_DIR}")

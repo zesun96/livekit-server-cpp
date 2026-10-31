@@ -27,12 +27,10 @@ ruby -Ipkg/ruby/lib pkg/ruby/test/offline_smoke.rb
 For another dependency layout, point `CMAKE_PREFIX_PATH` at a protobuf installation with a matching
 runtime, and set `LIVEKIT_PROTOCOL_ROOT` to a local protocol checkout. `BUILD_SHARED_LIBS` must be
 off. Linux/macOS use `liblivekitserver_ruby.so`/`.dylib`; pass the built library path through the
-same environment variable. The C++ SDK's default HTTP backend is Windows WinHTTP; supply a Ruby
-transport on other platforms. The native bridge and Ruby code must use the same bridge ABI
-(currently version 1). Library loading is lazy, and reports an incompatible ABI on first use.
-The C++ SHA-256/HS256 backend currently also requires Windows: token signing and webhook
-verification on other platforms report `unsupported`. Requests with a pre-issued access token
-and a custom transport can avoid those backend requirements.
+same environment variable. Windows defaults to WinHTTP/CNG; Linux/macOS select libcurl/OpenSSL
+for HTTP, signing and verification, with platform execution still pending. The native bridge
+and Ruby code must use the same bridge ABI (currently version 1). Library loading is lazy,
+and reports an incompatible ABI on first use. See [portable backends](../../docs/platform-backends.md).
 
 The gem packages the Ruby API and bridge sources, and loads an independently built native library.
 It does not build or bundle the C++ SDK automatically. Build the bridge from this full repository
@@ -158,3 +156,13 @@ clang-format -i pkg/ruby/src/livekit_server_ruby.cpp
 
 Windows x64 builds and offline tests are validated with the local Ruby installation. Other Ruby
 versions, Linux/macOS, and real-server integration require separate validation.
+
+The old Ruby bridge symbols forward to the [common C ABI](../../docs/c-abi.md); operation,
+error, signing and callback handling are shared with JNI. Language generators also invoke `scripts/generate_c_api.py` to maintain the
+shared native dispatch/grant mappings. See [portable backends](../../docs/platform-backends.md)
+for Linux/macOS dependencies and validation status.
+
+For portable Windows builds with shared dependencies, put `libcurl.dll`, `libcrypto-3-x64.dll`
+and their dependency DLLs beside `livekitserver_ruby.dll`. With an explicit
+`LIVEKIT_SERVER_RUBY_LIBRARY`, the loader temporarily registers that directory on RubyInstaller,
+which can disable PATH-based DLL lookup. Alternatively configure RubyInstaller's `RUBY_DLL_PATH`.

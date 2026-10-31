@@ -84,7 +84,9 @@ TEST(WebhookReceiverTest, RejectsTamperingAndUnknownKeys) {
 	ExpectAuthenticationFailure(wrong_key, body, token);
 
 	auto bad_signature = token;
-	bad_signature.back() = bad_signature.back() == 'A' ? 'B' : 'A';
+	// Mutate a full signature byte, avoiding unused bits in the final base64url character.
+	const auto signature_start = bad_signature.rfind('.') + 1;
+	bad_signature[signature_start] = bad_signature[signature_start] == 'A' ? 'B' : 'A';
 	ExpectAuthenticationFailure(receiver, body, bad_signature);
 }
 

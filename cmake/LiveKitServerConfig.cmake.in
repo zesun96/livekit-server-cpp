@@ -2,6 +2,12 @@
 
 include(CMakeFindDependencyMacro)
 find_dependency(Protobuf CONFIG)
+if(@LIVEKIT_SERVER_USE_CURL@)
+  find_dependency(CURL 7.85)
+endif()
+if(@LIVEKIT_SERVER_USE_OPENSSL@)
+  find_dependency(OpenSSL 3.0 COMPONENTS Crypto)
+endif()
 
 set(LiveKitServer_PROTOBUF_ADAPTER_AVAILABLE @LIVEKIT_SERVER_ENABLE_PROTOBUF_ADAPTER@)
 
