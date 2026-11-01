@@ -1,0 +1,15 @@
+{
+    "name": "livekit/server-sdk-cpp",
+    "description": "PHP binding for the LiveKit C++ server SDK public C ABI",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": ">=8.2",
+        "php-64bit": "*",
+        "ext-ffi": "*",
+        "ext-json": "*"
+    },
+    "autoload": {"files": ["src/bootstrap.php"]},
+    "scripts": {"test": "@php test/offline_smoke.php"},
+    "archive": {"exclude": ["/vendor", "/composer.lock", "/test", "/scripts", "/.gitignore"]}
+}
