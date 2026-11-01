@@ -4,6 +4,7 @@
 #include "livekit/server/error.h"
 #include "livekit_webhook.pb.h"
 
+#include <google/protobuf/struct.pb.h>
 #include <google/protobuf/util/json_util.h>
 
 #include <cctype>
@@ -18,56 +19,18 @@ namespace {
 constexpr auto token_leeway = std::chrono::minutes(1);
 
 std::string JsonStringField(std::string_view json, std::string_view name) {
-	const std::string marker = '"' + std::string(name) + '"';
-	auto position = json.find(marker);
-	if (position == std::string_view::npos) {
+	google::protobuf::Struct object;
+	if (!google::protobuf::util::JsonStringToMessage(std::string(json), &object).ok()) {
+		throw Error(ErrorCode::authentication, "webhook JWT contains invalid JSON");
+	}
+	const auto found = object.fields().find(std::string(name));
+	if (found == object.fields().end()) {
 		return {};
 	}
-	position = json.find(':', position + marker.size());
-	if (position == std::string_view::npos) {
-		return {};
+	if (found->second.kind_case() != google::protobuf::Value::kStringValue) {
+		throw Error(ErrorCode::authentication, "webhook JWT string claim is invalid");
 	}
-	position = json.find('"', position + 1);
-	if (position == std::string_view::npos) {
-		return {};
-	}
-	std::string result;
-	for (++position; position < json.size(); ++position) {
-		const char ch = json[position];
-		if (ch == '"') {
-			return result;
-		}
-		if (ch != '\\' || position + 1 >= json.size()) {
-			result.push_back(ch);
-			continue;
-		}
-		const char escaped = json[++position];
-		switch (escaped) {
-		case '"':
-		case '\\':
-		case '/':
-			result.push_back(escaped);
-			break;
-		case 'b':
-			result.push_back('\b');
-			break;
-		case 'f':
-			result.push_back('\f');
-			break;
-		case 'n':
-			result.push_back('\n');
-			break;
-		case 'r':
-			result.push_back('\r');
-			break;
-		case 't':
-			result.push_back('\t');
-			break;
-		default:
-			throw Error(ErrorCode::authentication, "webhook JWT contains invalid JSON");
-		}
-	}
-	throw Error(ErrorCode::authentication, "webhook JWT contains unterminated JSON");
+	return found->second.string_value();
 }
 
 std::optional<std::int64_t> JsonIntegerField(std::string_view json, std::string_view name) {
