@@ -8,6 +8,9 @@
 #include <bcrypt.h>
 #endif
 
+#include <google/protobuf/struct.pb.h>
+#include <google/protobuf/util/json_util.h>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -86,45 +89,16 @@ std::string RequestId() {
 }
 
 std::string JsonStringField(const std::string& json, const std::string& name) {
-	const std::string marker = '"' + name + '"';
-	auto position = json.find(marker);
-	if (position == std::string::npos) {
+	google::protobuf::Struct object;
+	if (!google::protobuf::util::JsonStringToMessage(json, &object).ok()) {
 		return {};
 	}
-	position = json.find(':', position + marker.size());
-	if (position == std::string::npos) {
+	const auto found = object.fields().find(name);
+	if (found == object.fields().end() ||
+	    found->second.kind_case() != google::protobuf::Value::kStringValue) {
 		return {};
 	}
-	position = json.find('"', position + 1);
-	if (position == std::string::npos) {
-		return {};
-	}
-	std::string result;
-	for (++position; position < json.size(); ++position) {
-		const char ch = json[position];
-		if (ch == '"') {
-			return result;
-		}
-		if (ch == '\\' && position + 1 < json.size()) {
-			const char escaped = json[++position];
-			switch (escaped) {
-			case 'n':
-				result.push_back('\n');
-				break;
-			case 'r':
-				result.push_back('\r');
-				break;
-			case 't':
-				result.push_back('\t');
-				break;
-			default:
-				result.push_back(escaped);
-			}
-		} else {
-			result.push_back(ch);
-		}
-	}
-	return {};
+	return found->second.string_value();
 }
 
 } // namespace
