@@ -49,7 +49,7 @@ backend; a custom transport can implement application-specific trust or proxy po
 
 ## Validation still needed on target platforms
 
-Run native unit/C-header/installed-consumer checks, Ruby/Python/.NET offline smoke, and Java
+Run native unit/C-header/installed-consumer checks, Ruby/Python/.NET/PHP offline smoke, and Java
 offline smoke with `-Xcheck:jni` on Linux and macOS. Then explicitly opt into local-server integration for RPC,
 TLS trust and rejection, proxies, timeouts, concurrent requests and webhook verification. Test
 both static/shared packaging and loader paths. Windows checks of these backends do not cover

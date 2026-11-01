@@ -65,5 +65,5 @@ protobuf.
 
 `livekit/server/c_api.h` is a pure C header independent of protobuf and the C++ standard library.
 The [C ABI contract](c-abi.md) defines versioning, allocation/freeing, JSON errors and synchronous
-callbacks. Ruby compatibility exports, Java JNI, Python ctypes and .NET interop delegate SDK operations to
+callbacks. Ruby compatibility exports, Java JNI, Python ctypes, .NET interop and PHP FFI delegate SDK operations to
 this boundary.
