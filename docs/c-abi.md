@@ -78,5 +78,6 @@ Key lookup request: `{"kind":"key","key":"issuer-api-key"}`.
 Response: `{"secret":"resolved-secret"}`; an empty secret means unknown issuer.
 
 Regenerate shared native mappings with `python scripts/generate_c_api.py` from the
-repository root. Both Ruby compatibility exports and JNI call this same implementation; they
-retain their existing public language APIs and original host callback exceptions.
+repository root. Ruby compatibility exports, JNI and the [Python ctypes binding](../pkg/python/README.md) call
+this same implementation. Host callback exceptions are retained and rethrown in their language
+after the native invoke returns and its result has been freed.

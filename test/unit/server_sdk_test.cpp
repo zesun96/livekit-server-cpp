@@ -55,8 +55,7 @@ public:
 	livekit::server::HttpResponse Send(const livekit::server::HttpRequest& request) override {
 		last_request = request;
 		if (fail) {
-			return {.status_code = 403,
-			        .body = R"({"code":"permission_denied","msg":"not allowed"})"};
+			return {.status_code = 403, .body = failure_body};
 		}
 		livekit::CreateRoomRequest create_request;
 		if (request.url.ends_with("/CreateRoom")) {
@@ -75,6 +74,7 @@ public:
 
 	livekit::server::HttpRequest last_request;
 	bool fail{};
+	std::string failure_body = R"({"code":"permission_denied","msg":"not allowed"})";
 };
 
 std::string Header(const livekit::server::HttpRequest& request, const std::string& name) {
@@ -198,6 +198,38 @@ TEST(LiveKitApiTest, ConvertsTwirpFailureToSdkError) {
 		EXPECT_EQ(error.http_status(), 403);
 		EXPECT_EQ(error.twirp_code(), "permission_denied");
 		EXPECT_STREQ(error.what(), "not allowed");
+	}
+}
+
+TEST(LiveKitApiTest, DecodesEscapedTwirpErrorsAndRejectsMalformedFields) {
+	auto transport = std::make_shared<RecordingTransport>();
+	transport->fail = true;
+	livekit::server::ApiOptions options;
+	options.url = "http://offline.invalid";
+	options.access_token = "test-token";
+	options.transport = transport;
+	livekit::server::LiveKitApi api(std::move(options));
+	transport->failure_body =
+	    R"({"code":"permission_denied","msg":"denied \u4e2d\u6587\ud83d\ude00\n\"quoted\""})";
+	try {
+		(void)api.Room().ListRoomsModel();
+		FAIL() << "expected HTTP error";
+	} catch (const livekit::server::Error& error) {
+		EXPECT_EQ(error.http_status(), 403);
+		EXPECT_EQ(error.twirp_code(), "permission_denied");
+		EXPECT_EQ(std::string(error.what()),
+		          "denied \xe4\xb8\xad\xe6\x96\x87\xf0\x9f\x98\x80\n\"quoted\"");
+	}
+	for (const auto* body : {"not JSON", R"({"code":123,"msg":false})"}) {
+		transport->failure_body = body;
+		try {
+			(void)api.Room().ListRoomsModel();
+			FAIL() << "expected HTTP error";
+		} catch (const livekit::server::Error& error) {
+			EXPECT_EQ(error.http_status(), 403);
+			EXPECT_TRUE(error.twirp_code().empty());
+			EXPECT_STREQ(error.what(), "LiveKit server returned HTTP 403");
+		}
 	}
 }
 
