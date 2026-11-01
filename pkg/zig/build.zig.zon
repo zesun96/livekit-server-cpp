@@ -1,0 +1,7 @@
+.{
+    .name = .livekit_server_cpp,
+    .fingerprint = 0xe214bdc7a114a2cf,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.18.0-dev.35+5e754304d",
+    .paths = .{ "build.zig", "build.zig.zon", "src", "test", "examples", "README.md", "LICENSE" },
+}

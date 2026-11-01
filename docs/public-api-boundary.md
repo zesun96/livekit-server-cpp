@@ -65,6 +65,7 @@ protobuf.
 
 `livekit/server/c_api.h` is a pure C header independent of protobuf and the C++ standard library.
 The [C ABI contract](c-abi.md) defines versioning, allocation/freeing, JSON errors and synchronous
-callbacks. Ruby compatibility exports, Java JNI, Python ctypes, .NET interop, PHP FFI and Rust
-C function pointers delegate SDK operations to this boundary. Rust's explicit unsafe module load
+callbacks. Ruby compatibility exports, Java JNI, Python ctypes, .NET interop, PHP FFI, Rust and Zig
+C function pointers delegate SDK operations to this boundary. Zig documents explicit allocator,
+result and module ownership. Rust's explicit unsafe module load
 requires a trusted library implementing that ABI; later service, token and webhook APIs are safe.

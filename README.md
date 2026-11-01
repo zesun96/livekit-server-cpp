@@ -8,7 +8,7 @@ capture, or playback dependencies.
 
 | Platform | Status |
 | --- | --- |
-| Windows x64 | Native SDK and Java, Ruby, Python, .NET, PHP, Rust bindings validated locally |
+| Windows x64 | Native SDK and Java, Ruby, Python, .NET, PHP, Rust, Zig bindings validated locally |
 | GNU/Linux | libcurl + OpenSSL backends implemented; platform/bindings not validated |
 | macOS | libcurl + OpenSSL backends implemented; platform/bindings not validated |
 | iOS / Android | No supported target declared |
@@ -182,8 +182,9 @@ status, and Twirp error code where available. Every logical call includes a stab
 | .NET 8+ | All six server services, 86 JSON models, token grants, verified webhook snapshots, and custom binary HTTP transport through the public C ABI | [.NET binding](pkg/dotnet/README.md) |
 | PHP 8.2+ (64-bit) | All six server services, 86 JSON models, token grants, verified webhook snapshots, and custom binary HTTP transport through FFI | [PHP binding](pkg/php/README.md) |
 | Rust 1.87+ | All six server services, 86 serde/JSON models, token grants, verified webhook snapshots, and custom binary HTTP callbacks through the public C ABI | [Rust binding](pkg/rust/README.md) |
+| Zig 0.18.0-dev.35 | All six server services, 86 JSON model types, token grants, verified webhook snapshots, and custom binary HTTP callbacks through the public C ABI | [Zig binding and exact toolchain](pkg/zig/README.md) |
 
-All six bindings expose the 52 model-based service methods for Room, Egress, Ingress, SIP,
+All seven bindings expose the 52 model-based service methods for Room, Egress, Ingress, SIP,
 AgentDispatch, and Connector. They use the C++ SDK for request validation, authentication,
 transport, and error handling. Requests and responses follow canonical protobuf JSON; language
 consumers do not need generated protobuf classes. Calls are synchronous, with application-owned
@@ -221,6 +222,11 @@ operations use safe Rust APIs. Arc ownership retains the module through native c
 callbacks preserve application errors and resume panics after returning from C++. Set
 `LIVEKIT_SERVER_RUST_LIBRARY`; see the [Rust guide](pkg/rust/README.md).
 
+The Zig module `livekit_server` loads the shared SDK directly and uses explicit allocators,
+owned results, `deinit` and reference-counted module `release`. Native errors retain their details,
+and host callback errors return after native cleanup. The package has no external Zig dependencies.
+See the [Zig guide](pkg/zig/README.md) for its exact development-toolchain version and ownership rules.
+
 The Java/Ruby bridges are built separately from the main SDK build and must match the language runtime's
 architecture. Keep native compiler, runtime, and protobuf dependencies consistent; the binding
 guides include Windows static-runtime build commands. No explicit API-object cleanup is needed:
@@ -242,9 +248,9 @@ are unavailable. The webhook integration test listens only on `127.0.0.1:17890`;
 local LiveKit Server webhook URL to that address before running it. It creates and deletes a unique
 room and requires a `room_started` event to pass signature verification and reach the callback.
 
-The Java, Ruby, Python, .NET, PHP and Rust bindings have separate offline smoke tests covering all service routes, binary
+The Java, Ruby, Python, .NET, PHP, Rust and Zig bindings have separate offline smoke tests covering all service routes, binary
 and Unicode payloads, token signing, webhook verification and callback exceptions. Java, Ruby,
-Python, .NET and Rust also exercise concurrent calls; PHP exercises nested synchronous calls.
+Python, .NET, Rust and Zig also exercise concurrent calls; PHP exercises nested synchronous calls.
 Ruby also exercises GC and compaction; Python checks callback GC and result cleanup. These use in-memory transports;
 running them does not require a server or open network connections. Build and run commands are in
 the [binding guides](pkg/README.md#offline-validation). Real-server binding integration has not
@@ -262,6 +268,7 @@ been validated; the room-listing examples contact a server only when explicitly 
 | .NET NuGet, C ABI interop, tokens, and webhooks | [.NET guide](pkg/dotnet/README.md) |
 | PHP Composer, FFI, tokens, and webhooks | [PHP guide](pkg/php/README.md) |
 | Rust crate, native module ownership, tokens, and webhooks | [Rust guide](pkg/rust/README.md) |
+| Zig module, explicit allocation, tokens, and webhooks | [Zig guide](pkg/zig/README.md) |
 | C++ room administration example | [Room service](examples/room_service.cpp) |
 | C++ webhook handler example | [Webhook handler](examples/webhook_handler.cpp) |
 
@@ -272,5 +279,6 @@ All language bindings use the [public C ABI](docs/c-abi.md) in
 result buffers, and synchronous callbacks with explicit context and byte lengths. Ruby retains
 its previous symbols as compatibility wrappers; JNI translates Java values and exceptions; Python
 uses ctypes directly; .NET uses managed interop delegates and module leases; PHP uses FFI;
-Rust uses libloading and C function pointers. Each retains per-call
+Rust uses libloading and C function pointers; Zig uses C function pointers and explicit allocation.
+Each retains per-call
 callback buffers and frees native results through the allocating library.

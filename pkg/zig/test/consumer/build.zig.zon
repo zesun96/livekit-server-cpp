@@ -1,0 +1,8 @@
+.{
+    .name = .livekit_server_zig_consumer,
+    .fingerprint = 0x86ab6a564073175d,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.18.0-dev.35+5e754304d",
+    .dependencies = .{ .livekit_server_cpp = .{ .path = "../.." } },
+    .paths = .{ "build.zig", "build.zig.zon", "consumer.zig" },
+}
