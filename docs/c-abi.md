@@ -25,14 +25,14 @@ The public header `livekit/server/c_api.h` compiles as C or C++. Link
   The response must stay alive until the enclosing invoke returns; the SDK copies it immediately
   and never frees it. Buffers need not be NUL-terminated. `user_data` is never retained.
 - Do not unwind host exceptions or longjmp through the callback. Catch and save the exception,
-  return nonzero, then rethrow in the host after invoke returns. JNI and Ruby do this.
+  return nonzero, then rethrow in the host after invoke returns. JNI, Ruby, Python and .NET do this.
   Nested invokes are allowed. Concurrent calls require separate or synchronized callback state.
   There are no background callbacks and none run after the call returns.
 
 ## Requests
 
 All 52 model-based methods use `operation: "<service>.<method>"`, e.g. `Room.ListRooms`,
-`Room.CreateRoom`, `Sip.CreateSIPDispatchRule`; service names are `Room`, `Egress`, `Ingress`,
+`Room.CreateRoom`, `Sip.CreateDispatchRule`; service names are `Room`, `Egress`, `Ingress`,
 `Sip`, `AgentDispatch`, `Connector`. Names match C++ client accessors and model overloads in
 `include/livekit/server/`. The single shared table is `src/detail/dispatch.inc`.
 
@@ -78,6 +78,6 @@ Key lookup request: `{"kind":"key","key":"issuer-api-key"}`.
 Response: `{"secret":"resolved-secret"}`; an empty secret means unknown issuer.
 
 Regenerate shared native mappings with `python scripts/generate_c_api.py` from the
-repository root. Ruby compatibility exports, JNI and the [Python ctypes binding](../pkg/python/README.md) call
-this same implementation. Host callback exceptions are retained and rethrown in their language
+repository root. Ruby compatibility exports, JNI, [Python ctypes](../pkg/python/README.md), and
+[.NET managed interop](../pkg/dotnet/README.md) call this same implementation. Host callback exceptions are retained and rethrown in their language
 after the native invoke returns and its result has been freed.

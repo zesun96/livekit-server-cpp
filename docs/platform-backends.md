@@ -19,7 +19,7 @@ OpenSSL and protobuf. Windows native builds with externally supplied protobuf st
 HTTP/crypto packages unless a portable backend is selected.
 
 The CMake package propagates required dependencies to installed static consumers. The C ABI,
-Ruby, Java and Python use the same selected backends. A custom transport remains available through
+Ruby, Java, Python and .NET use the same selected backends. A custom transport remains available through
 `ApiOptions::transport` or the synchronous C ABI callback.
 
 Example configuration (use dependencies built for the same architecture and C++ runtime):
@@ -49,7 +49,7 @@ backend; a custom transport can implement application-specific trust or proxy po
 
 ## Validation still needed on target platforms
 
-Run native unit/C-header/installed-consumer checks, Ruby and Python offline smoke, and Java
+Run native unit/C-header/installed-consumer checks, Ruby/Python/.NET offline smoke, and Java
 offline smoke with `-Xcheck:jni` on Linux and macOS. Then explicitly opt into local-server integration for RPC,
 TLS trust and rejection, proxies, timeouts, concurrent requests and webhook verification. Test
 both static/shared packaging and loader paths. Windows checks of these backends do not cover

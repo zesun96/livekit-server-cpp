@@ -74,6 +74,33 @@ TEST(WebhookReceiverTest, VerifiesAndDispatchesTypedPayload) {
 	EXPECT_EQ(participant_events, 1);
 }
 
+TEST(WebhookReceiverTest, AcceptsUnicodeEscapedJwtStringClaims) {
+	using namespace livekit::server;
+	const std::string body = R"({"event":"room_started","id":"EV_ESC"})";
+	const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+	                     std::chrono::system_clock::now().time_since_epoch())
+	                     .count();
+	const auto checksum = detail::Base64Encode(detail::Sha256(body));
+	std::string escaped_checksum;
+	constexpr char digits[] = "0123456789abcdef";
+	for (const unsigned char ch : checksum) {
+		escaped_checksum += "\\u00";
+		escaped_checksum += digits[ch >> 4];
+		escaped_checksum += digits[ch & 15];
+	}
+	const std::string header = R"({"alg":"HS\u0032\u0035\u0036","typ":"JWT"})";
+	const auto claims = std::string(R"({"iss":"\u006b\u0065\u0079","nbf":)") +
+	                    std::to_string(now - 60) + R"(,"exp":)" + std::to_string(now + 300) +
+	                    R"(,"sha256":")" + escaped_checksum + R"("})";
+	const auto unsigned_token =
+	    detail::Base64UrlEncode(header) + "." + detail::Base64UrlEncode(claims);
+	const auto jwt = unsigned_token + "." +
+	                 detail::Base64UrlEncode(detail::HmacSha256("secret", unsigned_token));
+	const auto event = WebhookReceiver("key", "secret").Receive(body, jwt);
+	EXPECT_EQ(event.id, "EV_ESC");
+	EXPECT_EQ(event.raw_body, body);
+}
+
 TEST(WebhookReceiverTest, RejectsTamperingAndUnknownKeys) {
 	const std::string body = R"({"event":"room_started","id":"EV_2"})";
 	const auto token = WebhookToken(body, std::chrono::system_clock::now());

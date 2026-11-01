@@ -8,7 +8,7 @@ capture, or playback dependencies.
 
 | Platform | Status |
 | --- | --- |
-| Windows x64 | Native SDK and Java, Ruby, Python bindings validated locally |
+| Windows x64 | Native SDK and Java, Ruby, Python, .NET bindings validated locally |
 | GNU/Linux | libcurl + OpenSSL backends implemented; platform/bindings not validated |
 | macOS | libcurl + OpenSSL backends implemented; platform/bindings not validated |
 | iOS / Android | No supported target declared |
@@ -179,8 +179,9 @@ status, and Twirp error code where available. Every logical call includes a stab
 | Java 17 | All six server services, 86 JSON models, Video/SIP/Agent token grants, verified webhook snapshots and callbacks, and custom HTTP transport | [Java binding](pkg/java/README.md) |
 | Ruby 3.1+ | All six server services, 86 Hash/JSON models, Video/SIP/Agent token grants, verified webhook snapshots and callbacks, and custom HTTP transport | [Ruby binding](pkg/ruby/README.md) |
 | Python 3.10+ | All six server services, 86 mapping/JSON models, token grants, verified webhook snapshots and callbacks, and custom HTTP transport through ctypes | [Python binding](pkg/python/README.md) |
+| .NET 8+ | All six server services, 86 JSON models, token grants, verified webhook snapshots, and custom binary HTTP transport through the public C ABI | [.NET binding](pkg/dotnet/README.md) |
 
-All three bindings expose the 52 model-based service methods for Room, Egress, Ingress, SIP,
+All four bindings expose the 52 model-based service methods for Room, Egress, Ingress, SIP,
 AgentDispatch, and Connector. They use the C++ SDK for request validation, authentication,
 transport, and error handling. Requests and responses follow canonical protobuf JSON; language
 consumers do not need generated protobuf classes. Calls are synchronous, with application-owned
@@ -201,6 +202,11 @@ The Python package imports as `livekit_server` and loads the shared SDK directly
 Build the SDK with `BUILD_SHARED_LIBS=ON` and native tests/examples OFF, install `pkg/python`, then
 set `LIVEKIT_SERVER_PYTHON_LIBRARY` to the shared library path. It needs no third-party Python
 runtime packages or Python-specific native bridge. See the [Python guide](pkg/python/README.md).
+
+The .NET package `LiveKit.Server.Cpp` uses namespace `LiveKit.Server` and loads C ABI exports
+through managed interop. Build the shared SDK, set `LIVEKIT_SERVER_DOTNET_LIBRARY`, and reference
+the managed project or its local NuGet package. No .NET-specific C++ bridge or third-party managed
+dependency is required. See the [.NET guide](pkg/dotnet/README.md).
 
 The Java/Ruby bridges are built separately from the main SDK build and must match the language runtime's
 architecture. Keep native compiler, runtime, and protobuf dependencies consistent; the binding
@@ -223,7 +229,7 @@ are unavailable. The webhook integration test listens only on `127.0.0.1:17890`;
 local LiveKit Server webhook URL to that address before running it. It creates and deletes a unique
 room and requires a `room_started` event to pass signature verification and reach the callback.
 
-The Java, Ruby and Python bindings have separate offline smoke tests covering all service routes, binary
+The Java, Ruby, Python and .NET bindings have separate offline smoke tests covering all service routes, binary
 and Unicode payloads, token signing, webhook verification, callback exceptions, and concurrent
 calls. Ruby also exercises GC and compaction; Python checks callback GC and result cleanup. These use in-memory transports;
 running them does not require a server or open network connections. Build and run commands are in
@@ -239,6 +245,7 @@ been validated; the room-listing examples contact a server only when explicitly 
 | Java build, packaging, tokens, and webhooks | [Java guide](pkg/java/README.md) |
 | Ruby build, gem packaging, tokens, and webhooks | [Ruby guide](pkg/ruby/README.md) |
 | Python wheel, ctypes, tokens, and webhooks | [Python guide](pkg/python/README.md) |
+| .NET NuGet, C ABI interop, tokens, and webhooks | [.NET guide](pkg/dotnet/README.md) |
 | C++ room administration example | [Room service](examples/room_service.cpp) |
 | C++ webhook handler example | [Webhook handler](examples/webhook_handler.cpp) |
 
@@ -248,4 +255,5 @@ All language bindings use the [public C ABI](docs/c-abi.md) in
 `include/livekit/server/c_api.h`: versioned entry points, stable error values, library-owned
 result buffers, and synchronous callbacks with explicit context and byte lengths. Ruby retains
 its previous symbols as compatibility wrappers; JNI translates Java values and exceptions; Python
-uses ctypes directly with per-call callback buffers and library-owned result cleanup.
+uses ctypes directly; .NET uses managed interop delegates and module leases. Each retains per-call
+callback buffers and frees native results through the allocating library.
