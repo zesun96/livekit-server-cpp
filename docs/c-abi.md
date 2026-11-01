@@ -26,6 +26,7 @@ The public header `livekit/server/c_api.h` compiles as C or C++. Link
   and never frees it. Buffers need not be NUL-terminated. `user_data` is never retained.
 - Do not unwind host exceptions or longjmp through the callback. Catch and save the exception,
   return nonzero, then rethrow in the host after invoke returns. JNI, Ruby, Python, .NET and PHP do this.
+  Rust retains callback errors and catches panics, resuming their original payload after native cleanup.
   Nested invokes are allowed. Concurrent calls require separate or synchronized callback state.
   There are no background callbacks and none run after the call returns.
 
@@ -79,6 +80,7 @@ Response: `{"secret":"resolved-secret"}`; an empty secret means unknown issuer.
 
 Regenerate shared native mappings with `python scripts/generate_c_api.py` from the
 repository root. Ruby compatibility exports, JNI, [Python ctypes](../pkg/python/README.md),
-[.NET managed interop](../pkg/dotnet/README.md) and [PHP FFI](../pkg/php/README.md) call this same
+[.NET managed interop](../pkg/dotnet/README.md), [PHP FFI](../pkg/php/README.md) and
+[Rust C function pointers](../pkg/rust/README.md) call this same
 implementation. Host callback exceptions are retained and rethrown in their language after the
 native invoke returns and its result has been freed.
